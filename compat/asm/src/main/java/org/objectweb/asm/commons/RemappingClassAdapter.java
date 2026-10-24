@@ -49,7 +49,8 @@ public class RemappingClassAdapter extends ClassVisitor {
     protected String className;
 
     public RemappingClassAdapter(final ClassVisitor cv, final Remapper remapper) {
-        this(Opcodes.ASM5, cv, remapper);
+        // Lich: ASM9, not ASM5, so these visitors accept Java 11+ class files (nest members, records).
+        this(Opcodes.ASM9, cv, remapper);
     }
 
     protected RemappingClassAdapter(final int api, final ClassVisitor cv,

@@ -3,18 +3,22 @@ gson = "2.13.1"
 # The versions Minecraft 1.7.10/1.8.9 put on the classpath. Lich compiles against them and never ships them.
 log4j-legacy = "2.0-beta9"
 jopt-simple = "4.6"
+commons-lang3-legacy = "3.3.2"
 junit = "5.13.4"
 # Lich ships ASM on the game's classpath and drops Forge's asm-all 5.0.3 (ASM 5 can't read Java 9+ classes).
 asm = "9.8"
 # Pack200 decoder for Forge's binpatches (java.util.jar.Pack200 is gone since Java 14). Nested inside
 # lich-compat-jdk and loaded in isolation, so its commons-io/commons-lang3 never meet the game's older copies.
 commons-compress = "1.27.1"
+# Nashorn, gone from the JDK since 15 (JEP 372); scripting mods get the standalone one (jdk.nashorn renamed).
+nashorn = "15.7"
 
 [libraries]
 gson = { module = "com.google.code.gson:gson", version.ref = "gson" }
 log4j-api-legacy = { module = "org.apache.logging.log4j:log4j-api", version.ref = "log4j-legacy" }
 log4j-core-legacy = { module = "org.apache.logging.log4j:log4j-core", version.ref = "log4j-legacy" }
 jopt-simple = { module = "net.sf.jopt-simple:jopt-simple", version.ref = "jopt-simple" }
+commons-lang3-legacy = { module = "org.apache.commons:commons-lang3", version.ref = "commons-lang3-legacy" }
 junit-bom = { module = "org.junit:junit-bom", version.ref = "junit" }
 junit-jupiter = { module = "org.junit.jupiter:junit-jupiter" }
 junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher" }
@@ -24,3 +28,4 @@ asm-analysis = { module = "org.ow2.asm:asm-analysis", version.ref = "asm" }
 asm-commons = { module = "org.ow2.asm:asm-commons", version.ref = "asm" }
 asm-util = { module = "org.ow2.asm:asm-util", version.ref = "asm" }
 commons-compress = { module = "org.apache.commons:commons-compress", version.ref = "commons-compress" }
+nashorn-core = { module = "org.openjdk.nashorn:nashorn-core", version.ref = "nashorn" }

@@ -3,16 +3,22 @@ package dev.lich.transform;
 import org.junit.jupiter.api.Test;
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassWriter;
+import org.objectweb.asm.Handle;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
+import org.objectweb.asm.Type;
 import org.objectweb.asm.tree.ClassNode;
+import org.objectweb.asm.tree.InvokeDynamicInsnNode;
+import org.objectweb.asm.tree.LdcInsnNode;
 import org.objectweb.asm.tree.MethodInsnNode;
+import org.objectweb.asm.tree.TypeInsnNode;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -24,6 +30,13 @@ class CompatTransformerTest {
             .renameType("java/util/jar/Pack200$Unpacker", "shim/Pack200$Unpacker")
             .redirect("java/lang/System", "setSecurityManager", "(Ljava/lang/SecurityManager;)V", "shim/SystemShims")
             .redirect("java/lang/Thread", "stop", "()V", "shim/ThreadShims")
+            .renamePackage("old/lib/", "new/lib/")
+            .redirect("new/lib/Type", "getType", "(Ljava/lang/String;)Lnew/lib/Type;", "shim/Types")
+            .rebase("new/lib/Verifier", "shim/Verifier")
+            .renamePackage("kept/lib/", "new/lib/", () -> false)
+            .fixInterfaceHandles(owner -> owner.equals("test/Comparing"))
+            .replaceInstantiations("lib/Writer", "shim/Writer")
+            .replaceIntConstant(0x50000, 0x90000, "asmlib/", "raised the API level")
             .patch("test.Patched", node -> {
                 node.access |= Opcodes.ACC_FINAL;
                 return true;
@@ -78,6 +91,178 @@ class CompatTransformerTest {
         MethodInsnNode call = onlyCall(compat.transform("test.Patcher", bytes));
         assertEquals("shim/Pack200", call.owner);
         assertEquals("()Lshim/Pack200$Unpacker;", call.desc);
+    }
+
+    @Test
+    void packagesAreRenamedWithTheirSubpackages() {
+        byte[] bytes = generate("test.Mixin", mv -> {
+            mv.visitTypeInsn(Opcodes.NEW, "old/lib/tree/ClassNode");
+            mv.visitInsn(Opcodes.POP);
+            mv.visitMethodInsn(Opcodes.INVOKESTATIC, "old/lib/ClassReader", "read", "(Lold/lib/tree/ClassNode;)Lold/library/Other;", false);
+            mv.visitInsn(Opcodes.POP);
+        });
+        ClassNode node = read(compat.transform("test.Mixin", bytes));
+        assertEquals("new/lib/tree/ClassNode", ((TypeInsnNode) node.methods.getFirst().instructions.getFirst()).desc);
+        MethodInsnNode call = calls(node).getFirst();
+        assertEquals("new/lib/ClassReader", call.owner);
+        assertEquals("(Lnew/lib/tree/ClassNode;)Lold/library/Other;", call.desc);
+        assertEquals(List.of("test.Mixin: renamed package old/lib/ to new/lib/ (logged once for test.*)"), changes);
+
+        compat.transform("test.Mixin2", generate("test.Mixin2", mv -> {
+            mv.visitTypeInsn(Opcodes.NEW, "old/lib/tree/ClassNode");
+            mv.visitInsn(Opcodes.POP);
+        }));
+        assertEquals(1, changes.size());
+    }
+
+    @Test
+    void namespaces() {
+        assertEquals("org.spongepowered", CompatTransformer.namespace("org.spongepowered.asm.mixin.Mixin"));
+        assertEquals("dev.example", CompatTransformer.namespace("dev.example.Client"));
+        assertEquals("optifine", CompatTransformer.namespace("optifine.Config"));
+        assertEquals("", CompatTransformer.namespace("Config"));
+    }
+
+    @Test
+    void classesInARenamedPackageKeepTheirNames() {
+        byte[] bytes = generate("old.lib.ClassWriter", mv -> {
+            mv.visitTypeInsn(Opcodes.NEW, "old/lib/Item");
+            mv.visitInsn(Opcodes.POP);
+        });
+        assertSame(bytes, compat.transform("old.lib.ClassWriter", bytes));
+    }
+
+    @Test
+    void redirectsMatchOwnersSpelledWithTheOldPackage() {
+        byte[] bytes = generate("test.Plugin", mv -> {
+            mv.visitInsn(Opcodes.ACONST_NULL);
+            mv.visitMethodInsn(Opcodes.INVOKESTATIC, "old/lib/Type", "getType", "(Ljava/lang/String;)Lold/lib/Type;", false);
+            mv.visitInsn(Opcodes.POP);
+        });
+        MethodInsnNode call = onlyCall(compat.transform("test.Plugin", bytes));
+        assertEquals("shim/Types", call.owner);
+        assertEquals("(Ljava/lang/String;)Lnew/lib/Type;", call.desc);
+    }
+
+    @Test
+    void subclassesAreRebasedButNewInstancesAreNot() {
+        ClassWriter writer = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+        // Spelled with the old package, as Mixin 0.7 does before the package rename.
+        writer.visit(Opcodes.V1_8, Opcodes.ACC_PUBLIC, "test/MixinVerifier", null, "old/lib/Verifier", null);
+        MethodVisitor mv = writer.visitMethod(Opcodes.ACC_PUBLIC, "<init>", "()V", null, null);
+        mv.visitCode();
+        mv.visitVarInsn(Opcodes.ALOAD, 0);
+        // super(new Verifier()): the inner call belongs to the NEW, the outer one is the super call.
+        mv.visitTypeInsn(Opcodes.NEW, "old/lib/Verifier");
+        mv.visitInsn(Opcodes.DUP);
+        mv.visitMethodInsn(Opcodes.INVOKESPECIAL, "old/lib/Verifier", "<init>", "()V", false);
+        mv.visitMethodInsn(Opcodes.INVOKESPECIAL, "old/lib/Verifier", "<init>", "(Lold/lib/Verifier;)V", false);
+        mv.visitInsn(Opcodes.RETURN);
+        mv.visitMaxs(0, 0);
+        mv.visitEnd();
+        writer.visitEnd();
+
+        ClassNode node = read(compat.transform("test.MixinVerifier", writer.toByteArray()));
+        assertEquals("shim/Verifier", node.superName);
+        List<MethodInsnNode> calls = calls(node);
+        assertEquals("new/lib/Verifier", calls.get(0).owner);
+        assertEquals("shim/Verifier", calls.get(1).owner);
+        assertEquals("(Lnew/lib/Verifier;)V", calls.get(1).desc);
+        assertTrue(changes.contains("test.MixinVerifier: rebased from new/lib/Verifier onto shim/Verifier"));
+    }
+
+    @Test
+    void instantiationsAreReplacedButSuperCallsAreNot() {
+        ClassWriter writer = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+        writer.visit(Opcodes.V1_8, Opcodes.ACC_PUBLIC, "test/MyWriter", null, "lib/Writer", null);
+        MethodVisitor mv = writer.visitMethod(Opcodes.ACC_PUBLIC, "<init>", "()V", null, null);
+        mv.visitCode();
+        // super(new Writer(new Writer())): two instantiations, then the super call.
+        mv.visitVarInsn(Opcodes.ALOAD, 0);
+        mv.visitTypeInsn(Opcodes.NEW, "lib/Writer");
+        mv.visitInsn(Opcodes.DUP);
+        mv.visitTypeInsn(Opcodes.NEW, "lib/Writer");
+        mv.visitInsn(Opcodes.DUP);
+        mv.visitMethodInsn(Opcodes.INVOKESPECIAL, "lib/Writer", "<init>", "()V", false);
+        mv.visitMethodInsn(Opcodes.INVOKESPECIAL, "lib/Writer", "<init>", "(Llib/Writer;)V", false);
+        mv.visitMethodInsn(Opcodes.INVOKESPECIAL, "lib/Writer", "<init>", "(Llib/Writer;)V", false);
+        mv.visitInsn(Opcodes.RETURN);
+        mv.visitMaxs(0, 0);
+        mv.visitEnd();
+        writer.visitEnd();
+
+        ClassNode node = read(compat.transform("test.MyWriter", writer.toByteArray()));
+        assertEquals("lib/Writer", node.superName);
+        List<String> news = new ArrayList<>();
+        node.methods.getFirst().instructions.forEach(insn -> {
+            if (insn instanceof TypeInsnNode type) {
+                news.add(type.desc);
+            }
+        });
+        assertEquals(List.of("shim/Writer", "shim/Writer"), news);
+        assertEquals(List.of("shim/Writer", "shim/Writer", "lib/Writer"), calls(node).stream().map(call -> call.owner).toList());
+    }
+
+    @Test
+    void intConstantsAreReplacedOnlyInClassesUsingTheMarker() {
+        byte[] visitor = generate("test.Visitor", mv -> {
+            mv.visitLdcInsn(0x50000);
+            mv.visitTypeInsn(Opcodes.NEW, "asmlib/ClassVisitor");
+            mv.visitInsn(Opcodes.POP2);
+        });
+        ClassNode node = read(compat.transform("test.Visitor", visitor));
+        assertEquals(0x90000, ((LdcInsnNode) node.methods.getFirst().instructions.getFirst()).cst);
+        assertEquals(List.of("test.Visitor: raised the API level (logged once for test.*)"), changes);
+
+        byte[] unrelated = generate("test.Unrelated", mv -> {
+            mv.visitLdcInsn(0x50000);
+            mv.visitInsn(Opcodes.POP);
+        });
+        assertSame(unrelated, compat.transform("test.Unrelated", unrelated));
+    }
+
+    @Test
+    void conditionalPackageRenamesCanSayNo() {
+        byte[] bytes = generate("test.UniMixin", mv -> {
+            mv.visitTypeInsn(Opcodes.NEW, "kept/lib/tree/ClassNode");
+            mv.visitInsn(Opcodes.POP);
+        });
+        assertSame(bytes, compat.transform("test.UniMixin", bytes));
+    }
+
+    @Test
+    void methodHandlesToInterfaceMethodsGetTheInterfaceFlag() {
+        Handle metafactory = new Handle(Opcodes.H_INVOKESTATIC, "java/lang/invoke/LambdaMetafactory", "metafactory",
+                "(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;Ljava/lang/invoke/MethodType;"
+                        + "Ljava/lang/invoke/MethodType;Ljava/lang/invoke/MethodHandle;Ljava/lang/invoke/MethodType;)"
+                        + "Ljava/lang/invoke/CallSite;", false);
+        ClassWriter writer = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+        writer.visit(Opcodes.V1_8, Opcodes.ACC_PUBLIC | Opcodes.ACC_INTERFACE | Opcodes.ACC_ABSTRACT, "test/ScoreFunction",
+                null, "java/lang/Object", null);
+        MethodVisitor mv = writer.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "create", "()V", null, null);
+        mv.visitCode();
+        // What ASM 5.0-based reobfuscation wrote: no interface flag, on its own lambda body, on another
+        // interface's static method, and (correctly) on a class's.
+        for (String owner : List.of("test/ScoreFunction", "test/Comparing", "test/Helper")) {
+            mv.visitInvokeDynamicInsn("get", "()Ljava/util/function/IntSupplier;", metafactory,
+                    Type.getType("()I"), new Handle(Opcodes.H_INVOKESTATIC, owner, "lambda$0", "()I", false), Type.getType("()I"));
+            mv.visitInsn(Opcodes.POP);
+        }
+        mv.visitInsn(Opcodes.RETURN);
+        mv.visitMaxs(0, 0);
+        mv.visitEnd();
+        writer.visitEnd();
+
+        ClassNode node = read(compat.transform("test.ScoreFunction", writer.toByteArray()));
+        List<Boolean> flags = new ArrayList<>();
+        node.methods.getFirst().instructions.forEach(insn -> {
+            if (insn instanceof InvokeDynamicInsnNode indy) {
+                assertFalse(indy.bsm.isInterface());
+                flags.add(((Handle) indy.bsmArgs[1]).isInterface());
+            }
+        });
+        assertEquals(List.of(true, true, false), flags);
+        assertEquals(List.of("test.ScoreFunction: marked method handles to interface methods (logged once for test.*)"), changes);
     }
 
     @Test

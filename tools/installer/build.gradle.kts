@@ -14,7 +14,7 @@ application {
     mainClass = "dev.lich.installer.ProfileInstaller"
 }
 
-// The jars a Lich profile puts on the game's class path: Lich's modules and ASM 9, without other
+// The jars a Lich profile puts on the game's class path: Lich's modules, ASM 9 and Nashorn, without other
 // dependencies, because the game's own libraries (log4j, jopt-simple, ...) come from the version the
 // profile inherits from.
 val lich = configurations.dependencyScope("lich")
@@ -42,6 +42,8 @@ dependencies {
     add("lich", libs.asm.analysis)
     add("lich", libs.asm.commons)
     add("lich", libs.asm.util)
+    // For scripting mods (jdk.nashorn → org.openjdk.nashorn); it runs on the ASM 9 above.
+    add("lich", libs.nashorn.core)
 }
 
 /** Runs ProfileInstaller with the Lich jars, the JVM flags and [target] (--root or --prism-instance). */
@@ -80,13 +82,13 @@ tasks.register<JavaExec>("installDevProfile") {
 }
 
 // ./gradlew :installer:installPrism [-Plich.mc=1.8.9] [-Plich.prismInstance=<dir>]
-// Default instance: %APPDATA%/PrismLauncher/instances/lich-<mc>. It must exist already; this only adds or
+// Default instance: %APPDATA%/PrismLauncher/instances/lich-forge-<mc>. It must exist already; this only adds or
 // refreshes the Lich component, so run it after every build you want to test in Prism.
 tasks.register<JavaExec>("installPrism") {
     description = "Adds or refreshes the Lich component in a Prism instance."
     val instance = providers.gradleProperty("lich.prismInstance").orElse(
         providers.gradleProperty("lich.mc").orElse("1.8.9").map { mc ->
-            "${System.getenv("APPDATA")}/PrismLauncher/instances/lich-$mc"
+            "${System.getenv("APPDATA")}/PrismLauncher/instances/lich-forge-$mc"
         })
     runInstaller(instance.map { listOf("--prism-instance", it) })
 }

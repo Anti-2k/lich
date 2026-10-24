@@ -9,6 +9,17 @@ dependencies {
     testImplementation(libs.commons.compress)
 }
 
+// The game's commons-lang3, to test the patch to its JavaVersion on the real class. Kept off the test
+// classpath, where commons-compress would upgrade it.
+val legacyLang3 = configurations.dependencyScope("legacyLang3")
+val legacyLang3Classpath = configurations.resolvable("legacyLang3Classpath") {
+    extendsFrom(legacyLang3.get())
+    isTransitive = false
+}
+dependencies {
+    add("legacyLang3", libs.commons.lang3.legacy)
+}
+
 // commons-compress and its dependencies travel inside this jar under META-INF/lich/pack200/ and are
 // loaded by an isolated class loader (Pack200.java), so they never clash with the game's commons-io
 // or commons-lang3. The index lists the nested jars, because a class loader can't list resources.
@@ -48,4 +59,9 @@ tasks.compileJava {
 }
 tasks.test {
     jvmArgs("--add-exports", "java.base/jdk.internal.misc=ALL-UNNAMED")
+    val lang3: FileCollection = legacyLang3Classpath.get()
+    inputs.files(lang3).withPropertyName("legacyLang3")
+    jvmArgumentProviders.add(CommandLineArgumentProvider {
+        listOf("-Dlich.test.commonsLang3=" + lang3.singleFile.absolutePath)
+    })
 }

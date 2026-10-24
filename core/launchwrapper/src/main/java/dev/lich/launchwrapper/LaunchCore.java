@@ -11,6 +11,7 @@ import net.minecraft.launchwrapper.LogWrapper;
 import org.apache.logging.log4j.Level;
 
 import java.io.File;
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.net.MalformedURLException;
 import java.net.URL;
@@ -27,7 +28,8 @@ import java.util.Set;
 /**
  * What LaunchWrapper 1.12's {@code Launch} does, step for step: parse the launch arguments, load the
  * tweakers (tweakers may queue more tweakers, until none are left), collect their launch arguments and
- * call the primary tweaker's launch target. {@link Launch#main} and Lich's boot both run it.
+ * call the primary tweaker's launch target. It always runs inside {@link Launch#main}, Lich's boot
+ * included, so the stack looks like 1.12's; boot passes its hooks through {@link #useHooks}.
  *
  * <p>The one change: 1.12 casts the application class loader to {@code URLClassLoader} for the class
  * path, which fails on Java 9+. Lich asks its own defining loader when that is a {@code URLClassLoader}
@@ -37,7 +39,50 @@ import java.util.Set;
 public final class LaunchCore {
     private static final String DEFAULT_TWEAK = "net.minecraft.launchwrapper.VanillaTweaker";
 
+    private static final String BOOT = "dev.lich.boot.Main";
+
+    /** Set by boot right before it calls {@link Launch#main}; {@code null} when nobody did. */
+    private static volatile LaunchHooks pendingHooks;
+
     private LaunchCore() {
+    }
+
+    /** The hooks for the next {@link Launch#main} call. */
+    public static void useHooks(LaunchHooks hooks) {
+        pendingHooks = hooks;
+    }
+
+    /** For {@link Launch}: the hooks set by {@link #useHooks}, once; {@code null} if boot didn't set any. */
+    public static LaunchHooks takeHooks() {
+        LaunchHooks hooks = pendingHooks;
+        pendingHooks = null;
+        return hooks;
+    }
+
+    /**
+     * For {@link Launch}, when it was started without boot: runs Lich's boot from {@code Launch}'s own
+     * class loader, if it's there, and returns {@code true} once it's done (boot comes back through
+     * {@code Launch.main} with its hooks). That happens when a mod relaunches the game in a class loader of
+     * its own (Essential's loader calls {@code Launch.main} again, on fresh copies of every class) and when
+     * a launcher names {@code Launch} as the main class: either way the game would otherwise run without
+     * Lich's compat pass. Without boot (LaunchWrapper's own tests) it returns {@code false}.
+     */
+    public static boolean startBoot(String[] args) throws Exception {
+        Class<?> boot;
+        try {
+            boot = Class.forName(BOOT, true, LaunchCore.class.getClassLoader());
+        } catch (ClassNotFoundException noBoot) {
+            return false;
+        }
+        try {
+            boot.getMethod("main", String[].class).invoke(null, (Object) args);
+        } catch (InvocationTargetException e) {
+            if (e.getCause() instanceof Exception cause) {
+                throw cause;
+            }
+            throw e;
+        }
+        return true;
     }
 
     /** Launches the game, or throws whatever stopped it; {@link Launch#main} turns that into exit code 1. */

@@ -63,21 +63,21 @@ a phase, and update it when a decision changes or a **(verify)** item gets check
 
 ## Testing in Prism (real account, public servers, singleplayer)
 
-- Prism instances `lich-1.8.9` ("1.8.9 (Lich)") and `lich-1.7.10` ("1.7.10 (Lich)") are copies of the
-  user's Forge instances `1.8.9` and `1.7.10` with Forge removed and Lich added as a custom component.
-  Java 25 is pinned, `AutomaticJava=false` and `IgnoreJavaCompatibility=true`. The Forge mods sit in
+- Prism instances `lich-forge-1.8.9` ("1.8.9 Forge (Lich)") and `lich-forge-1.7.10` ("1.7.10 Forge
+  (Lich)") are copies of the user's Forge instances `1.8.9` and `1.7.10` with Lich added as a custom
+  component (Forge's component entry copied from the original instance). Java 25 is pinned,
+  `AutomaticJava=false` and `IgnoreJavaCompatibility=true`. Mods the user isn't testing sit in
   `minecraft/mods-disabled`. Resource packs weren't copied. **Never edit the original `1.8.9`/`1.7.10`
-  instances**: they're the user's own test instances (Forge + OptiFine).
-- `lich-forge-1.8.9` ("1.8.9 Forge (Lich)") and `lich-forge-1.7.10` ("1.7.10 Forge (Lich)") are the same
-  with Forge kept (its component entry copied from the original instance), mods still disabled. Refresh
-  them with `-Plich.prismInstance=%APPDATA%/PrismLauncher/instances/lich-forge-<mc>`. Prism only lists a
-  new instance folder after a rescan or restart; don't restart the user's Prism for them.
+  instances**: they're the user's own test instances (Forge + OptiFine). There are no Prism
+  instances without Forge any more (removed 2026-10-24 at the user's request); test the `lich` profile through
+  devlaunch. Prism only lists a new instance folder after a rescan or restart; don't restart the
+  user's Prism for them.
 - After a Lich build, refresh an instance with `./gradlew :installer:installPrism "-Plich.mc=1.8.9"`. It
   rewrites `patches/dev.lich.json` (main class, `+libraries` with `MMC-hint: local`, `+jvmArgs`), copies
   the jars into the instance's `libraries/` and keeps the `dev.lich` entry last in `mmc-pack.json`
   (Prism takes the main class from the last component that sets one, and Forge sets LaunchWrapper's). `-Plich.prismInstance=<dir>` targets another instance.
-- Smoke test without the user's account: `prismlauncher.exe --launch lich-1.8.9 --offline Dev`. The game
-  log is `instances/lich-<mc>/minecraft/logs/latest.log`, and Prism's own log (`PrismLauncher/logs`)
+- Smoke test without the user's account: `prismlauncher.exe --launch lich-forge-1.8.9 --offline Dev`. The
+  game log is `instances/lich-forge-<mc>/minecraft/logs/latest.log`, and Prism's own log (`PrismLauncher/logs`)
   shows `Applying "dev.lich" GOOD` and the full JVM arguments. `--world` doesn't open worlds on these
   old versions. If a launch stalls, read the console window's text with UI Automation. Offline mode
   never downloads missing libraries; that's how the 1.7.10 copy first failed (guava 15 and commons-lang3
@@ -90,11 +90,12 @@ a phase, and update it when a decision changes or a **(verify)** item gets check
 
 ```
 build-logic/        convention plugin `lich.java` (Java 25, UTF-8, -Xlint:all)
-core/               boot, launchwrapper, transform, remap, loader, mixin-provider, perf
+core/               boot, launchwrapper, transform, remap, loader, mixin-provider
 compat/             jdk (removed-API shims, reflection compat), asm (ASM 5 on ASM 9), lwjgl2 (LWJGL 2 API on LWJGL 3)
 api/                public version-neutral Lich API
 versions/<mc>/      compat-mc, compat-forge, api-impl; Gradle projects are named v1_8_9-compat-mc etc.
 versions/shared/    compat-mc (project shared-compat-mc): game fixes identical in 1.7.10 and 1.8.9
+mods/               first-party Lich mods, not part of the runtime: perf (optimisations)
 tools/              devlaunch, installer
 test/               testmod, harness
 ```
@@ -138,6 +139,10 @@ Two deliberate differences: the compat pass also runs on transformer-excluded cl
 - 4-space indents. Each class gets a short Javadoc that says what it does. Comments explain *why*.
 - Keep version-specific code in `versions/<mc>/`. Core modules stay version-neutral, so 1.12.2 can be
   added later as three new modules.
-- **Server safety** (PLAN.md §6): Lich core and `perf` never touch movement/physics, the tick timer,
+- **Core doesn't change the game** (PLAN.md §0): a patch to a game class goes in core only if the game
+  needs it to run on Java 25. Optimisations and other improvements go in a Lich mod (`mods/perf`), and
+  whatever those mods need from the game becomes a hook in the API, woven only when a loaded mod
+  declares it (§5.2). With no Lich mods, the game plays exactly as vanilla or Forge does on Java 8.
+- **Server safety** (PLAN.md §6): Lich core and the `perf` mod never touch movement/physics, the tick timer,
   attack/dig timing, packet timing/content, or `MathHelper`.
 - Don't commit unless asked.

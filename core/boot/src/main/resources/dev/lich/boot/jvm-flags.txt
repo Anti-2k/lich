@@ -10,6 +10,15 @@
 --add-opens=java.base/java.util=ALL-UNNAMED
 --add-opens=java.base/java.net=ALL-UNNAMED
 --add-opens=java.base/sun.nio.ch=ALL-UNNAMED
+# The game's Gson (2.2.4) serializes types it has no adapter for by reflecting on their private fields,
+# which Java 8 allowed for JDK classes too. Mod configs hold these: Pattern (Chatting), atomics, java.time
+# values, date formats, and java.awt.Color in HUD mods.
+--add-opens=java.base/java.util.regex=ALL-UNNAMED
+--add-opens=java.base/java.util.concurrent=ALL-UNNAMED
+--add-opens=java.base/java.util.concurrent.atomic=ALL-UNNAMED
+--add-opens=java.base/java.time=ALL-UNNAMED
+--add-opens=java.base/java.text=ALL-UNNAMED
+--add-opens=java.desktop/java.awt=ALL-UNNAMED
 # For Lich's reflection compat layer (final fields, enum constants) in later phases.
 --add-exports=java.base/jdk.internal.misc=ALL-UNNAMED
 --add-exports=java.base/jdk.internal.reflect=ALL-UNNAMED
