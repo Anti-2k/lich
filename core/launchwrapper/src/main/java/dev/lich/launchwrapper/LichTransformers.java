@@ -10,6 +10,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * ({@link #last()}) every transformer registered through {@code registerTransformer}. They live outside
  * the registered list, so FML's sorting and mods that remove or reorder transformers can't move them:
  * JDK-compat redirects must see bytes before anyone else, and frame recomputation must see them last.
+ * The first ones also run on classes excluded from transformers, which no registered transformer sees.
  */
 public final class LichTransformers {
     private static final List<IClassTransformer> FIRST = new CopyOnWriteArrayList<>();

@@ -14,6 +14,7 @@ import java.io.File;
 import java.lang.reflect.Method;
 import java.net.MalformedURLException;
 import java.net.URL;
+import java.net.URLClassLoader;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -28,8 +29,10 @@ import java.util.Set;
  * tweakers (tweakers may queue more tweakers, until none are left), collect their launch arguments and
  * call the primary tweaker's launch target. {@link Launch#main} and Lich's boot both run it.
  *
- * <p>The one change: the class path comes from {@code java.class.path}, because 1.12's cast of the
- * application class loader to {@code URLClassLoader} fails on Java 9+.
+ * <p>The one change: 1.12 casts the application class loader to {@code URLClassLoader} for the class
+ * path, which fails on Java 9+. Lich asks its own defining loader when that is a {@code URLClassLoader}
+ * (Lich's system class loader, which leaves out the jars Lich replaces) and reads
+ * {@code java.class.path} otherwise.
  */
 public final class LaunchCore {
     private static final String DEFAULT_TWEAK = "net.minecraft.launchwrapper.VanillaTweaker";
@@ -116,8 +119,11 @@ public final class LaunchCore {
         mainMethod.invoke(null, (Object) argumentList.toArray(new String[0]));
     }
 
-    /** The application class path, as URLs, in order. */
+    /** The class path, as URLs, in order. */
     static URL[] classPath() {
+        if (LaunchCore.class.getClassLoader() instanceof URLClassLoader loader) {
+            return loader.getURLs();
+        }
         List<URL> urls = new ArrayList<>();
         for (String entry : System.getProperty("java.class.path", "").split(File.pathSeparator)) {
             if (entry.isEmpty()) {

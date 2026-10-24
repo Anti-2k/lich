@@ -8,12 +8,12 @@ import java.util.Set;
 enum Profile {
     /** Plain Minecraft: Lich's own tweaker is the primary one. */
     VANILLA,
-    /** Forge: FML's tweaker is the primary one. Not supported until PLAN.md Phase 3. */
+    /** Forge: FML's tweaker is the primary one, and FML does the obf → SRG remapping. */
     FORGE;
 
-    private static final Set<String> FML_TWEAKERS = Set.of(
-            "cpw.mods.fml.common.launcher.FMLTweaker",             // Forge 1.7.10
-            "net.minecraftforge.fml.common.launcher.FMLTweaker");  // Forge 1.8.9 (and 1.12.2)
+    static final String FML_1_7_10 = "cpw.mods.fml.common.launcher.FMLTweaker";
+    static final String FML_1_8_9 = "net.minecraftforge.fml.common.launcher.FMLTweaker"; // and 1.12.2
+    private static final Set<String> FML_TWEAKERS = Set.of(FML_1_7_10, FML_1_8_9);
 
     static Profile detect(List<String> tweakClasses) {
         return tweakClasses.stream().anyMatch(FML_TWEAKERS::contains) ? FORGE : VANILLA;

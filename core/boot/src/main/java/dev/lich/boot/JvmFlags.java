@@ -78,6 +78,7 @@ final class JvmFlags {
             }
             case "--add-modules" -> ModuleLayer.boot().findModule(value).isPresent();
             case "--enable-native-access" -> unnamed.isNativeAccessEnabled();
+            case "-Djava.system.class.loader" -> ClassLoader.getSystemClassLoader().getClass().getName().equals(value);
             // No API reports these; fall back to the literal arguments the JVM was started with.
             default -> ManagementFactory.getRuntimeMXBean().getInputArguments().contains(flag);
         };

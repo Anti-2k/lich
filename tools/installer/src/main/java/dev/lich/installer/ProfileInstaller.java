@@ -23,6 +23,7 @@ import java.util.Map;
  * Writes a Lich version profile into a launcher-style directory: {@code versions/lich-<mc>/lich-<mc>.json}
  * and the Lich jars under {@code libraries/}. The profile inherits everything from the vanilla version
  * and changes only the main class, adds Lich's jars (first on the class path) and Lich's JVM flags.
+ * For the Forge builds Lich supports it also writes the Forge profile and a Lich profile on top of it.
  */
 public final class ProfileInstaller {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create();
@@ -56,7 +57,7 @@ public final class ProfileInstaller {
                     + " --flags <jvm-flags.txt> [--library <coords>=<jar>]...");
         }
         if (prismInstance != null) {
-            String version = libraries.keySet().stream().findFirst().map(c -> c.split(":")[2]).orElse("dev");
+            String version = libraries.keySet().stream().filter(c -> c.startsWith("dev.lich:")).findFirst().map(c -> c.split(":")[2]).orElse("dev");
             PrismComponent.install(prismInstance, mc, version, readFlags(flagsFile), libraries);
             System.out.println("[installer] Installed Lich " + version + " into Prism instance " + prismInstance);
             return;
@@ -65,7 +66,11 @@ public final class ProfileInstaller {
         System.out.println("[installer] Wrote " + json);
     }
 
-    /** Writes the profile and copies the libraries; returns the JSON's path. */
+    /**
+     * Copies the libraries and writes {@code lich-<mc>}; returns that JSON's path. When Lich knows the
+     * Forge build for {@code mc}, it also writes {@code forge-<mc>} (plain Forge, as Forge's installer
+     * would) and {@code lich-forge-<mc>} on top of it.
+     */
     static Path install(String mc, Path root, List<String> jvmFlags, Map<String, Path> libraries) throws IOException {
         JsonArray libraryList = new JsonArray();
         for (Map.Entry<String, Path> library : libraries.entrySet()) {
@@ -93,16 +98,30 @@ public final class ProfileInstaller {
         JsonObject arguments = new JsonObject();
         arguments.add("jvm", jvm);
 
-        String id = "lich-" + mc;
+        Path json = writeLichProfile(root, "lich-" + mc, mc, libraryList, arguments);
+        try (InputStream forge = ProfileInstaller.class.getResourceAsStream("forge-" + mc + ".json")) {
+            if (forge != null) {
+                String forgeId = "forge-" + mc;
+                Path forgeJson = root.resolve("versions").resolve(forgeId).resolve(forgeId + ".json");
+                Files.createDirectories(forgeJson.getParent());
+                Files.write(forgeJson, forge.readAllBytes());
+                writeLichProfile(root, "lich-forge-" + mc, forgeId, libraryList, arguments);
+            }
+        }
+        return json;
+    }
+
+    private static Path writeLichProfile(Path root, String id, String parent, JsonArray libraries, JsonObject arguments)
+            throws IOException {
         String now = OffsetDateTime.now().truncatedTo(ChronoUnit.SECONDS).toString();
         JsonObject profile = new JsonObject();
         profile.addProperty("id", id);
-        profile.addProperty("inheritsFrom", mc);
+        profile.addProperty("inheritsFrom", parent);
         profile.addProperty("type", "release");
         profile.addProperty("time", now);
         profile.addProperty("releaseTime", now);
         profile.addProperty("mainClass", MAIN_CLASS);
-        profile.add("libraries", libraryList);
+        profile.add("libraries", libraries);
         // Game arguments come from the parent's minecraftArguments; only JVM arguments are added.
         profile.add("arguments", arguments);
 
