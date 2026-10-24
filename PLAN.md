@@ -225,7 +225,11 @@ user's machine**, and disables runtime patching in `ClassPatchManager`.
   `arguments.jvm` from a child JSON whose parent is a legacy (`minecraftArguments`) version
   **(verify)**. If it doesn't, the flags have to go in the launcher profile's JVM arguments.
   `devlaunch` already handles both cases.
-- **Prism/MultiMC**: generated instance/pack with component patches that replace the LWJGL 2 component.
+- **Prism/MultiMC**: a custom component (`patches/dev.lich.json` with `mainClass`, `+libraries` using
+  `MMC-hint: local`, and `+jvmArgs`) plus an `mmc-pack.json` entry after Minecraft. **Works in Prism
+  11.0.2** (2026-10-24, both versions): `installer`'s `PrismComponent`, run with
+  `:installer:installPrism`. The instance also needs `IgnoreJavaCompatibility=true` and
+  `AutomaticJava=false`, or Prism falls back to Java 8. Phase 6 adds replacing the LWJGL 2 component.
 - No custom launcher.
 
 ---
@@ -345,7 +349,7 @@ differ by 1 ulp between JDKs **(verify)**.
 | Phase | Goal | Done when |
 |---|---|---|
 | 0. Setup ✅ | Gradle multi-project on JDK 25 + `devlaunch`; still to do: decompile LaunchWrapper 1.12, FML 1.7.10/1.8.9; read lwjgl3ify/RFB | **Done 2026-10-24:** repo builds; vanilla 1.8.9 and 1.7.10 reach the main menu on **Java 8** through `devlaunch` (baseline). The Lich version JSON generator moves to Phase 1, since there's no `boot` to point it at yet. |
-| 1. Vanilla 1.8.9 on 25 🟡 | `boot` + `launchwrapper` + flags + log4j safety + profile generator. The SRV fix came free with the class loader parent. The Twitch null stream moved to Phase 8: on 25 it only loads a few unused DLLs | **So far (2026-10-24):** main menu and joining a local server on Java 25 with zero JVM warnings; 18 unit tests. **Left:** a singleplayer world and a public server with a real account (needs a real launcher, §4.6) |
+| 1. Vanilla 1.8.9 on 25 🟡 | `boot` + `launchwrapper` + flags + log4j safety + profile generator. The SRV fix came free with the class loader parent. The Twitch null stream moved to Phase 8: on 25 it only loads a few unused DLLs | **So far (2026-10-24):** main menu and joining a local server on Java 25 with zero JVM warnings; 18 unit tests. Prism test instances `lich-1.8.9`/`lich-1.7.10` start Lich on Java 25. **Left:** a singleplayer world and a public server with a real account, both in those instances (§4.6) |
 | 2. Vanilla 1.7.10 on 25 🟡 | Same for 1.7.10. No 1.7.10-specific code was needed | Same checks; main menu and local server done |
 | 3. Forge, no mods | Installer pre-patching, ASM upgrade + shims, SecurityManager strip, EnumHelper rewrite | Forge main menu + mod list on both versions |
 | 4. Forge mods | Mixin provider, redirect table, reflection compat, JDK shims, harness + corpus | Agreed % of the corpus loads; failures name the mod and the API |
