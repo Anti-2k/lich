@@ -1,0 +1,19 @@
+# JVM arguments Lich needs: the generated version JSON passes them, and dev.lich.boot.Main refuses to
+# start without them. One argument per line, in --option=value form. See PLAN.md §4.1.
+#
+# Old Netty, LWJGL 2, Guava and mods reflect into these JDK packages.
+--add-opens=java.base/java.lang=ALL-UNNAMED
+--add-opens=java.base/java.lang.reflect=ALL-UNNAMED
+--add-opens=java.base/java.lang.invoke=ALL-UNNAMED
+--add-opens=java.base/java.nio=ALL-UNNAMED
+--add-opens=java.base/java.io=ALL-UNNAMED
+--add-opens=java.base/java.util=ALL-UNNAMED
+--add-opens=java.base/java.net=ALL-UNNAMED
+--add-opens=java.base/sun.nio.ch=ALL-UNNAMED
+# For Lich's reflection compat layer (final fields, enum constants) in later phases.
+--add-exports=java.base/jdk.internal.misc=ALL-UNNAMED
+--add-exports=java.base/jdk.internal.reflect=ALL-UNNAMED
+# LWJGL and Twitch load native libraries; JDK 24+ warns otherwise (JEP 472).
+--enable-native-access=ALL-UNNAMED
+# LWJGL 2 and Netty use sun.misc.Unsafe memory access; JDK 24+ warns otherwise (JEP 498).
+--sun-misc-unsafe-memory-access=allow
