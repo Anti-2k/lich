@@ -44,7 +44,8 @@ public class RemappingAnnotationAdapter extends AnnotationVisitor {
 
     public RemappingAnnotationAdapter(final AnnotationVisitor av,
             final Remapper remapper) {
-        this(Opcodes.ASM5, av, remapper);
+        // Lich: ASM9, not ASM5, so these visitors accept Java 11+ class files (nest members, records).
+        this(Opcodes.ASM9, av, remapper);
     }
 
     protected RemappingAnnotationAdapter(final int api,

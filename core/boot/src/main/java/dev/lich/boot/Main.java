@@ -9,9 +9,8 @@ import dev.lich.launchwrapper.LaunchHooks;
 import dev.lich.launchwrapper.LichSources;
 import dev.lich.launchwrapper.LichTransformers;
 import dev.lich.transform.CompatTransformer;
+import net.minecraft.launchwrapper.Launch;
 import net.minecraft.launchwrapper.LaunchClassLoader;
-import net.minecraft.launchwrapper.LogWrapper;
-import org.apache.logging.log4j.Level;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -32,6 +31,11 @@ public final class Main {
     }
 
     public static void main(String[] args) {
+        ClassLoader relauncher = Relaunch.relauncher();
+        if (relauncher != null) {
+            // Before anything loads an ASM class: see Relaunch.hook.
+            Relaunch.hook(relauncher, LogManager.getLogger("Lich"));
+        }
         List<String> missing = JvmFlags.missing(JvmFlags.required());
         boolean ignoreMissing = Boolean.getBoolean("lich.ignoreMissingFlags");
         if (!missing.isEmpty() && !ignoreMissing) {
@@ -46,8 +50,9 @@ public final class Main {
         Runtime.Version java = Runtime.version();
         List<String> tweakClasses = Profile.tweakClasses(args);
         Profile profile = Profile.detect(tweakClasses);
-        log.info("Lich {} on Java {} ({}), {} profile", version == null ? "(dev)" : version, java,
-                System.getProperty("java.vendor"), profile.name().toLowerCase(Locale.ROOT));
+        log.info("Lich {} on Java {} ({}), {} profile{}", version == null ? "(dev)" : version, java,
+                System.getProperty("java.vendor"), profile.name().toLowerCase(Locale.ROOT),
+                relauncher == null ? "" : ", relaunched by " + relauncher.getClass().getName());
         if (!missing.isEmpty()) {
             log.warn("Starting without these JVM arguments, as -Dlich.ignoreMissingFlags asks: {}", missing);
         }
@@ -69,12 +74,9 @@ public final class Main {
             case FORGE -> args;
         };
 
-        try {
-            LaunchCore.launch(launchArgs, new Hooks());
-        } catch (Exception e) {
-            LogWrapper.log(Level.ERROR, e, "Unable to launch");
-            System.exit(1);
-        }
+        // Through Launch.main, like a plain LaunchWrapper start: mods look for its frames on the stack.
+        LaunchCore.useHooks(new Hooks());
+        Launch.main(launchArgs);
     }
 
     /**
@@ -85,13 +87,18 @@ public final class Main {
         CompatTransformer.Builder builder = CompatTransformer.builder();
         JdkCompat.register(builder);
         AsmCompat.register(builder);
+        if (tweakClasses.contains(Profile.FML_1_7_10)) {
+            AsmCompat.registerFml1710(builder);
+        }
         CompatTransformer compat = builder
                 .listener((className, what) -> log.info("Compat: {} in {}", what, className))
                 .build();
         // Lich's own classes never need it, and the shims call the very methods it redirects to them.
         LichTransformers.addFirst((name, transformedName, bytes) ->
                 transformedName.startsWith("dev.lich.") ? bytes : compat.transform(transformedName, bytes));
-        if (ClassLoader.getSystemClassLoader() instanceof LichSystemClassLoader) {
+        if (Relaunch.relauncher() != null) {
+            Relaunch.useCompat(compat::transform);
+        } else if (ClassLoader.getSystemClassLoader() instanceof LichSystemClassLoader) {
             LichSystemClassLoader.setTransformer(compat::transform);
         }
 
@@ -136,7 +143,11 @@ public final class Main {
             // excludes it itself; 1.7.10 doesn't, and a second copy in LaunchClassLoader breaks the ASM
             // shims (loader constraint violations on org.objectweb.asm.Type).
             classLoader.addClassLoaderExclusion("org.objectweb.asm.");
-            LichSystemClassLoader.lichJars().forEach(LichSources::hide);
+            // Nashorn, for scripting mods: one copy, untouched by mod transformers. Scripts still see game
+            // classes, since its engines load them through the context class loader (LaunchClassLoader).
+            classLoader.addClassLoaderExclusion("org.openjdk.nashorn.");
+            ClassLoader relauncher = Relaunch.relauncher();
+            (relauncher == null ? LichSystemClassLoader.lichJars() : Relaunch.lichJars(relauncher)).forEach(LichSources::hide);
         }
     }
 }

@@ -48,7 +48,8 @@ public class RemappingSignatureAdapter extends SignatureVisitor {
 
     public RemappingSignatureAdapter(final SignatureVisitor v,
             final Remapper remapper) {
-        this(Opcodes.ASM5, v, remapper);
+        // Lich: ASM9, not ASM5, so these visitors accept Java 11+ class files (nest members, records).
+        this(Opcodes.ASM9, v, remapper);
     }
 
     protected RemappingSignatureAdapter(final int api,

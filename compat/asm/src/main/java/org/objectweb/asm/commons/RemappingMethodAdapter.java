@@ -48,7 +48,8 @@ public class RemappingMethodAdapter extends LocalVariablesSorter {
 
     public RemappingMethodAdapter(final int access, final String desc,
             final MethodVisitor mv, final Remapper remapper) {
-        this(Opcodes.ASM5, access, desc, mv, remapper);
+        // Lich: ASM9, not ASM5, so these visitors accept Java 11+ class files (nest members, records).
+        this(Opcodes.ASM9, access, desc, mv, remapper);
     }
 
     protected RemappingMethodAdapter(final int api, final int access,

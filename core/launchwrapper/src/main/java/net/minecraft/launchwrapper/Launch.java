@@ -23,10 +23,22 @@ public class Launch {
 
     public static void main(String[] args) {
         try {
-            LaunchCore.launch(args, LaunchHooks.NONE);
+            new Launch().launch(args);
         } catch (Exception e) {
             LogWrapper.log(Level.ERROR, e, "Unable to launch");
             System.exit(1);
         }
+    }
+
+    /**
+     * 1.12's instance method, kept so that {@code Launch.launch} is on the stack while tweakers run, as
+     * it is in 1.12: Mixin 0.7 looks for this frame to tell tweaker setup from a tweaker's constructor.
+     */
+    private void launch(String[] args) throws Exception {
+        LaunchHooks hooks = LaunchCore.takeHooks();
+        if (hooks == null && LaunchCore.startBoot(args)) {
+            return;
+        }
+        LaunchCore.launch(args, hooks == null ? LaunchHooks.NONE : hooks);
     }
 }

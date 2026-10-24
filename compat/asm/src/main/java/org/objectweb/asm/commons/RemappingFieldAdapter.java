@@ -45,7 +45,8 @@ public class RemappingFieldAdapter extends FieldVisitor {
     private final Remapper remapper;
 
     public RemappingFieldAdapter(final FieldVisitor fv, final Remapper remapper) {
-        this(Opcodes.ASM5, fv, remapper);
+        // Lich: ASM9, not ASM5, so these visitors accept Java 11+ class files (nest members, records).
+        this(Opcodes.ASM9, fv, remapper);
     }
 
     protected RemappingFieldAdapter(final int api, final FieldVisitor fv,

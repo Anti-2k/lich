@@ -24,7 +24,6 @@ module("transform", "core/transform")
 module("remap", "core/remap")
 module("loader", "core/loader")
 module("mixin-provider", "core/mixin-provider")
-module("perf", "core/perf")
 
 module("compat-jdk", "compat/jdk")
 module("compat-asm", "compat/asm")
@@ -40,6 +39,9 @@ for (mc in listOf("1.7.10", "1.8.9")) {
         module("$prefix-$part", "versions/$mc/$part")
     }
 }
+
+// First-party Lich mods: optional, installed like any other mod, never part of the runtime.
+module("perf", "mods/perf")
 
 module("devlaunch", "tools/devlaunch")
 module("installer", "tools/installer")

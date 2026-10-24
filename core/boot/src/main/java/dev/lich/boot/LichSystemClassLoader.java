@@ -185,7 +185,7 @@ public final class LichSystemClassLoader extends URLClassLoader {
         OTHER,
         /** Mojang's LaunchWrapper or an ASM older than 9: Lich ships its own, so it's left out. */
         REPLACED,
-        /** One of Lich's jars (by its manifest title) or the ASM 9 that Lich ships. */
+        /** One of Lich's jars (by its manifest title), or a library Lich ships: ASM 9, Nashorn. */
         LICH
     }
 
@@ -197,6 +197,10 @@ public final class LichSystemClassLoader extends URLClassLoader {
             if (jar.getEntry("net/minecraft/launchwrapper/Launch.class") != null
                     && jar.getEntry("dev/lich/launchwrapper/LaunchCore.class") == null) {
                 return Kind.REPLACED;
+            }
+            // Java 11+ class files, which FML's mod discovery can't parse either.
+            if (jar.getEntry("org/openjdk/nashorn/api/scripting/NashornScriptEngineFactory.class") != null) {
+                return Kind.LICH;
             }
             Manifest manifest = jar.getManifest();
             if (manifest == null) {
