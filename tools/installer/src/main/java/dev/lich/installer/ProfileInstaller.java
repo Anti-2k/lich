@@ -34,12 +34,14 @@ public final class ProfileInstaller {
     public static void main(String[] args) throws IOException {
         String mc = null;
         Path root = null;
+        Path prismInstance = null;
         Path flagsFile = null;
         Map<String, Path> libraries = new LinkedHashMap<>();
         for (int i = 0; i < args.length; i++) {
             switch (args[i]) {
                 case "--mc" -> mc = args[++i];
                 case "--root" -> root = Path.of(args[++i]);
+                case "--prism-instance" -> prismInstance = Path.of(args[++i]);
                 case "--flags" -> flagsFile = Path.of(args[++i]);
                 case "--library" -> {
                     // group:artifact:version=path/to.jar
@@ -49,8 +51,15 @@ public final class ProfileInstaller {
                 default -> throw new IllegalArgumentException("Unknown option " + args[i]);
             }
         }
-        if (mc == null || root == null || flagsFile == null) {
-            throw new IllegalArgumentException("Usage: --mc <version> --root <dir> --flags <jvm-flags.txt> [--library <coords>=<jar>]...");
+        if (mc == null || (root == null) == (prismInstance == null) || flagsFile == null) {
+            throw new IllegalArgumentException("Usage: --mc <version> (--root <launcher dir> | --prism-instance <instance dir>)"
+                    + " --flags <jvm-flags.txt> [--library <coords>=<jar>]...");
+        }
+        if (prismInstance != null) {
+            String version = libraries.keySet().stream().findFirst().map(c -> c.split(":")[2]).orElse("dev");
+            PrismComponent.install(prismInstance, mc, version, readFlags(flagsFile), libraries);
+            System.out.println("[installer] Installed Lich " + version + " into Prism instance " + prismInstance);
+            return;
         }
         Path json = install(mc, root, readFlags(flagsFile), libraries);
         System.out.println("[installer] Wrote " + json);

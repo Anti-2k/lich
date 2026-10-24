@@ -54,6 +54,24 @@ a phase, and update it when a decision changes or a **(verify)** item gets check
   `lich\run\cache` in its command line. Never kill java processes by name alone: Gradle daemons and
   the user's own game run on java too.
 
+## Testing in Prism (real account, public servers, singleplayer)
+
+- Prism instances `lich-1.8.9` ("1.8.9 (Lich)") and `lich-1.7.10` ("1.7.10 (Lich)") are copies of the
+  user's Forge instances `1.8.9` and `1.7.10` with Forge removed and Lich added as a custom component.
+  Java 25 is pinned, `AutomaticJava=false` and `IgnoreJavaCompatibility=true`. The Forge mods sit in
+  `minecraft/mods-disabled`. Resource packs weren't copied. **Never edit the original `1.8.9`/`1.7.10`
+  instances**: they're the user's 2k client test instances (Forge + OptiFine).
+- After a Lich build, refresh an instance with `./gradlew :installer:installPrism "-Plich.mc=1.8.9"`. It
+  rewrites `patches/dev.lich.json` (main class, `+libraries` with `MMC-hint: local`, `+jvmArgs`), copies
+  the jars into the instance's `libraries/` and keeps the `dev.lich` entry right after Minecraft in
+  `mmc-pack.json`. `-Plich.prismInstance=<dir>` targets another instance.
+- Smoke test without the user's account: `prismlauncher.exe --launch lich-1.8.9 --offline Dev`. The game
+  log is `instances/lich-<mc>/minecraft/logs/latest.log`, and Prism's own log (`PrismLauncher/logs`)
+  shows `Applying "dev.lich" GOOD` and the full JVM arguments. `--world` doesn't open worlds on these
+  old versions. If a launch stalls, read the console window's text with UI Automation. Offline mode
+  never downloads missing libraries; that's how the 1.7.10 copy first failed (guava 15 and commons-lang3
+  3.1, which Forge instances never fetch).
+
 ## Layout
 
 ```
