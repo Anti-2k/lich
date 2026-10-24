@@ -13,8 +13,9 @@ application {
     mainClass = "dev.lich.devlaunch.Main"
 }
 
-// ./gradlew :devlaunch:runGame [-Plich.mc=1.8.9] [-Plich.profile=vanilla|lich] [-Plich.gameJava=8] [-Plich.args="--skip-assets --dry-run"]
-// -Plich.profile=lich installs the Lich profile into run/cache first and launches lich-<mc> instead of vanilla.
+// ./gradlew :devlaunch:runGame [-Plich.mc=1.8.9] [-Plich.profile=vanilla|lich|forge|lich-forge] [-Plich.gameJava=8] [-Plich.args="--skip-assets --dry-run"]
+// Every profile but vanilla installs the dev profiles into run/cache first (:installer:installDevProfile):
+// lich-<mc> (Lich, no Forge), forge-<mc> (plain Forge, for Java 8 baselines) and lich-forge-<mc>.
 // The game's JDK comes from Gradle's toolchain detection, or from -Plich.gameJavaHome=<jdk dir> for JDKs
 // Gradle can't find (unzipped ones have no registry entry on Windows).
 // Everything the task's lambdas use is a local of the configure block: lambdas that reach script-level
@@ -24,15 +25,14 @@ tasks.register<JavaExec>("runGame") {
     description = "Downloads and launches Minecraft through devlaunch."
 
     val mcVersion = providers.gradleProperty("lich.mc").orElse("1.8.9").get()
-    val lichProfile = when (val profile = providers.gradleProperty("lich.profile").orElse("vanilla").get()) {
-        "vanilla" -> false
-        "lich" -> true
-        else -> throw GradleException("lich.profile must be vanilla or lich, not $profile")
+    val profile = providers.gradleProperty("lich.profile").orElse("vanilla").get()
+    if (profile !in listOf("vanilla", "lich", "forge", "lich-forge")) {
+        throw GradleException("lich.profile must be vanilla, lich, forge or lich-forge, not $profile")
     }
-    if (lichProfile) {
+    if (profile != "vanilla") {
         dependsOn(":installer:installDevProfile")
     }
-    val versionId = if (lichProfile) "lich-$mcVersion" else mcVersion
+    val versionId = if (profile == "vanilla") mcVersion else "$profile-$mcVersion"
     val javaExe = if (System.getProperty("os.name").startsWith("Windows")) "java.exe" else "java"
     // A plain string: the configuration cache can't store the toolchain provider chain.
     val gameJava = providers.gradleProperty("lich.gameJavaHome").orNull?.let { File(it, "bin/$javaExe").absolutePath }

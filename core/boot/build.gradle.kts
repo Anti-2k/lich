@@ -1,11 +1,16 @@
-// dev.lich.boot.Main: checks the JVM flags, makes logging safe, picks the profile and starts Lich's
-// LaunchWrapper. PLAN.md §3, §4.1.
+// dev.lich.boot.Main: checks the JVM flags, makes logging safe, installs the compat pass and the
+// system class loader, picks the profile and starts Lich's LaunchWrapper. PLAN.md §3, §4.1.
 plugins {
     id("lich.java")
 }
 
 dependencies {
     implementation(project(":launchwrapper"))
+    implementation(project(":transform"))
+    implementation(project(":compat-jdk"))
+    implementation(project(":compat-asm"))
+    implementation(project(":v1_7_10-compat-mc"))
+    implementation(project(":v1_8_9-compat-mc"))
     // Provided by the game's own classpath at runtime.
     compileOnly(libs.log4j.api.legacy)
 

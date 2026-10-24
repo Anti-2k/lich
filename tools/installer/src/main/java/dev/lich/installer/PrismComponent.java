@@ -17,7 +17,7 @@ import java.util.Map;
 /**
  * Adds Lich to an existing Prism Launcher (or MultiMC) instance as a custom component: the component
  * file {@code patches/dev.lich.json}, the Lich jars as instance-local libraries, and an entry in
- * {@code mmc-pack.json} right after Minecraft. Running it again only refreshes the jars and the
+ * {@code mmc-pack.json} after every other component. Running it again only refreshes the jars and the
  * component file, so it doubles as "deploy the latest build".
  */
 final class PrismComponent {
@@ -71,7 +71,10 @@ final class PrismComponent {
         Files.writeString(pack, GSON.toJson(withLichComponent(JsonParser.parseString(Files.readString(pack)).getAsJsonObject(), version)) + "\n");
     }
 
-    /** Adds (or updates) the Lich entry, placed after Minecraft so its main class wins. */
+    /**
+     * Adds (or updates) the Lich entry as the last component: Prism takes the main class from the last
+     * component that sets one, and Forge sets LaunchWrapper's.
+     */
     static JsonObject withLichComponent(JsonObject pack, String version) {
         JsonArray components = pack.getAsJsonArray("components");
         JsonArray updated = new JsonArray();
@@ -87,10 +90,8 @@ final class PrismComponent {
                 continue;
             }
             updated.add(component);
-            if (uid.equals("net.minecraft")) {
-                updated.add(lich);
-            }
         }
+        updated.add(lich);
         pack.add("components", updated);
         return pack;
     }

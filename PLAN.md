@@ -57,10 +57,10 @@ Never redistribute Minecraft or patched Forge binaries. Patch at load time, or o
 ### 2.3 Removed JDK features
 | Removed | Since | Who uses it | Fix |
 |---|---|---|---|
-| SecurityManager (`System.setSecurityManager` always throws) | 24 (JEP 486) | Forge's `FMLSecurityManager` (1.8.9; 1.7.10 **(verify)**), some mods | Strip the call. Redirect `System.exit`/`Runtime.exit` in mod code to a Lich handler that does FML's job. |
-| `Field.modifiers` reflection hack | 12 | Forge `EnumHelper`, many mods ("setFinalStatic") | Reflection compat layer (§4.4) |
-| `sun.reflect.ConstructorAccessor` / `ReflectionFactory.newConstructorAccessor` | 9 | `EnumHelper` | Rewrite EnumHelper (§4.4) |
-| `java.util.jar.Pack200` | 14 | FML `ClassPatchManager` (`binpatches.pack.lzma`) | Pre-apply binpatches at install time (§4.5) |
+| SecurityManager (`System.setSecurityManager` always throws) | 24 (JEP 486) | `FMLTweaker`'s constructor, both versions (confirmed), some mods | **Done (Phase 3):** the call is redirected to a no-op (`SystemShims`). Later: redirect `System.exit`/`Runtime.exit` in mod code to a Lich handler that does FML's job. |
+| `Field.modifiers` reflection hack | 12 | Forge `ObjectHolderRef` (both versions, fatal at startup), `EnumHelper`, many mods ("setFinalStatic") | **Done for the Forge pattern (Phase 3)**, §4.4 |
+| `sun.reflect.ReflectionFactory.newFieldAccessor`/`newConstructorAccessor`, `sun.reflect.FieldAccessor`/`ConstructorAccessor` | 9 | `ObjectHolderRef`, `EnumHelper`, mods that copied them | **Done (Phase 3):** Lich look-alikes, §4.4 |
+| `java.util.jar.Pack200` | 14 | FML `ClassPatchManager` (`binpatches.pack.lzma`) | **Done (Phase 3):** a Pack200 shim at runtime (§4.5), not install-time pre-patching |
 | JAXB `javax.xml.bind` (`DatatypeConverter`) | 11 | Mods doing base64/hex | Bundle jaxb-api, or redirect to `java.util.Base64`/`HexFormat` |
 | Nashorn `jdk.nashorn.*` | 15 | Scripting mods | Bundle `org.openjdk.nashorn:nashorn-core`, remap `jdk.nashorn` → `org.openjdk.nashorn` |
 | `sun.misc.BASE64Encoder/Decoder` | 9 | Old mods/libs | Redirect to shim |
@@ -69,9 +69,29 @@ Never redistribute Minecraft or patched Forge binaries. Patch at load time, or o
 | Applet API | JDK 26 (JEP 504) | Old game/launcher classes **(verify)** | Not removed in 25 yet; watch it |
 
 ### 2.4 Other runtime issues
-- **ASM version**: Forge ships ASM 5. ASM 5 can't parse Java 9+ class files, and Mixin/coremods/FML's
-  `ModDiscoverer` read class bytes. Provide the latest ASM 9.x (must know Java 25 class files). Ship
-  shims for any ASM classes FML uses that newer ASM removed (e.g. `RemappingClassAdapter` **(verify)**).
+- **ASM version (done in Phase 3)**: Forge ships asm-all 5.0.3, which can't parse Java 9+ class files.
+  Lich ships ASM 9.8 (asm, -tree, -analysis, -commons, -util) and its system class loader drops
+  asm-all 5 from the class path. Differences that mattered, found by running Forge on 25:
+  - ASM 9 removed `RemappingClassAdapter`, `RemappingMethodAdapter` and three more `Remapping*`
+    classes, which FML's `DeobfuscationTransformer` extends. `compat-asm` carries ASM 5.0.3's own
+    copies (BSD). Kept verbatim, so FML's output, e.g. local renumbering, stays as coremods expect.
+  - ASM 9's `Type.getType(String)` throws on internal names; ASM 5 returned a method-sort type.
+    FML 1.8.9's `EventSubscriptionTransformer` relies on that, and otherwise silently skips every event
+    class. Redirected to `Asm5Types.getType`.
+  - ASM-5-API visitors throw on Java 9+ attributes ("NestHost requires ASM7"). FML's mod discovery hits
+    them in Lich's own jars and ASM 9's `module-info`, so those jars are hidden from discovery
+    (`LichSources`). Still open (Phase 4): mods that scan or transform Java 9+ classes, and subclasses
+    of `ClassNode`/`MethodNode` calling the no-arg constructors, which ASM 6+ rejects.
+  - FML 1.7.10 lets `LaunchClassLoader` define its own copy of ASM (1.8.9 excludes it); the copy
+    broke the ASM shims with loader constraint violations. Lich excludes `org.objectweb.asm.` in both.
+- **Lich's system class loader (Phase 3)**: tweakers and FML's launch code (`FMLTweaker`,
+  `relauncher.*`) are LaunchWrapper class loader exclusions, so they're defined by the system class
+  loader, where `LaunchClassLoader`'s transformers never run, and they call removed JDK APIs. Lich
+  installs its own system class loader (`-Djava.system.class.loader=dev.lich.boot.LichSystemClassLoader`,
+  as RetroFuturaBootstrap does) so the compat pass reaches them too. It's a `URLClassLoader` because FML's
+  `CoreModManager` calls `URLClassLoader.addURL` on it for cascading tweakers. It also drops Mojang's
+  LaunchWrapper and asm-all 5 from the class path. The JDK then warns that CDS is off for
+  application classes; `-Xlog:cds=off` hides that.
 - **Mixin**: mods shade Mixin 0.7.x. Provide one modern Mixin (+ MixinExtras) and always serve
   `org.spongepowered.*` from it, whatever is shaded in mod jars.
 - **SRV lookup (tested 2026-10-24)**: vanilla `ServerAddress` loads `com.sun.jndi.dns.DnsContextFactory`
@@ -91,6 +111,17 @@ Never redistribute Minecraft or patched Forge binaries. Patch at load time, or o
   `SafeLoggingTest`). log4j is a class loader exclusion, so transformers can't patch `JndiLookup`.
   Don't swap log4j versions; FML touches log4j-core internals.
 - **Twitch SDK** (dead service, native libs): patch in a null stream so nothing loads.
+- **Sound race in `SoundManager` (1.7.10 and 1.8.9, fixed in Phase 3)**: a resource reload during the
+  async "Sound Library Loader" starts a second sound system next to the first. OpenAL refuses the
+  second context, and the game has no sound until the menu music crashes it (`UnsatisfiedLinkError` in
+  `AL10.nalGetSourcei`). FML reloads right after the first load; on Java 25 Forge 1.7.10 lost the race
+  every time, while Java 8 narrowly wins it. `shared-compat-mc`'s `SoundLoaderRace` makes a reload wait
+  for the loader thread. It runs in the Forge profile only (SRG names) until the vanilla profile has
+  them too (Phase 5).
+- **Access token in the game log (to fix)**: vanilla 1.7.10 and 1.8.9 log `(Session ID is token:<access
+  token>:<uuid>)` at startup, in plain text in `logs/latest.log`, which users paste into support
+  chats. Forge 1.8.9's patched `Main` drops the line; vanilla and Forge 1.7.10 don't. Lich should
+  redact it (a log4j filter can only drop the line, which is fine) in both profiles.
 - **Scala 2.11** (Forge 1.7.10 ships it for Scala mods like ForgeMultipart/OpenComputers): test on 25.
 
 ### 2.5 LWJGL
@@ -100,7 +131,8 @@ Never redistribute Minecraft or patched Forge binaries. Patch at load time, or o
   `sun.misc.Unsafe::objectFieldOffset` from `org.lwjgl.MemoryUtilSun$AccessorUnsafe`. Once a future
   JDK removes that method, LWJGL 2 falls back to reflection on `Buffer.address`, which needs
   `--add-opens java.base/java.nio`. Through Lich (Phase 1), both 1.8.9 and 1.7.10 also join a local
-  server on Java 25 with no warnings at all. Still untested: singleplayer worlds, Linux, macOS.
+  server on Java 25 with no warnings at all; 1.7.10 also ran a singleplayer world and a public server.
+  Still untested: Linux, macOS.
 - LWJGL 2 is broken on Apple Silicon and has old input/DPI/Wayland problems.
 - LWJGL 3 reuses package/class names with different signatures, and its JNI symbols are tied to
   `org.lwjgl.*`, so it **can't be relocated**. Keep LWJGL 3 at `org.lwjgl` and **rewrite consumer
@@ -115,18 +147,22 @@ Never redistribute Minecraft or patched Forge binaries. Patch at load time, or o
 launcher (vanilla / Prism / MultiMC)
    │  java 25 + Lich JVM flags, mainClass = dev.lich.boot.Main
    ▼
-lich-boot ─ checks the JVM flags, builds the classpath from java.class.path, picks the profile
+LichSystemClassLoader (-Djava.system.class.loader) ─ loads the whole class path, minus the jars Lich
+   │        replaces (Mojang's LaunchWrapper, asm-all 5), and runs the compat pass on what it defines
+   ▼
+lich-boot ─ checks the JVM flags, installs the compat pass, picks the profile
    │        {1.7.10, 1.8.9} × {vanilla, forge}, discovers Lich mods
    ▼
 Lich LaunchWrapper (own impl, API-compatible net.minecraft.launchwrapper.*)
-   │  LaunchClassLoader(parent = platform loader)
+   │  LaunchClassLoader(parent = platform loader; excluded classes come from LichSystemClassLoader)
    │  transformer order:
-   │    1. Lich core: JDK-compat redirects, LWJGL2 redirects, reflection compat, SecurityManager strip
+   │    1. Lich compat pass: JDK/ASM redirects, reflection compat, SecurityManager strip
+   │       (also on transformer-excluded classes; on obf names, before Forge's binpatches)
    │    2. [vanilla profile] obf → SRG remapper (Lich's own; Forge does this in the forge profile)
    │    3. Forge/FML transformers + Forge coremods          (forge profile only)
    │    4. Mixin (Lich internal patches + Lich mods + Forge mods' mixins)
    │    5. Lich mod raw transformers (advanced, opt-in)
-   │    6. Lich core: frame recomputation with modern ASM
+   │    6. Lich last: game fixes on SRG names (now ClassPatches, later Mixins), frame recomputation
    ▼
 Lich mod loader ───────────────┬──── FML (forge profile) loads Forge mods as usual
    preLaunch → init → client   │     Lich jars are hidden from FML discovery
@@ -147,17 +183,18 @@ SRG data downloaded at install time (not bundled). Because of this:
 |---|---|
 | `boot` | Main class, flag checks, profile selection, crash-report hints ("mod X used removed JDK API Y") |
 | `launchwrapper` | Own implementation of `Launch`, `LaunchClassLoader`, `ITweaker`, `IClassTransformer`, `IClassNameTransformer`, `LogWrapper`, blackboard |
-| `transform` | Transformer framework + the redirect table |
+| `transform` | The compat pass (`CompatTransformer`): type and string renames, call redirects, class patches |
 | `remap` | obf → SRG runtime remapper for the vanilla profile |
-| `compat-jdk` | Shims for removed JDK APIs, reflection compat helpers |
+| `compat-jdk` | Shims for removed JDK APIs and their redirect table: Pack200 (nested commons-compress), SecurityManager, reflection compat |
+| `compat-asm` | ASM 5 classes ASM 9 removed (verbatim), redirects for ASM 5 behavior |
 | `compat-lwjgl2` | LWJGL 2 API on LWJGL 3.3.x (Phase 6) |
 | `compat-forge-<ver>` | Version-specific FML/Forge patches |
-| `compat-mc-<ver>` | Vanilla fixes as Mixins (SRV, Twitch, log4j) |
+| `compat-mc-<ver>` | Fixes to the game (Mixins from Phase 4, ClassPatches on SRG names until then); fixes identical in both versions live in `shared-compat-mc` |
 | `loader` | Lich mod discovery, descriptor parsing, dependency resolution, entrypoints, FML-hiding |
 | `api` + `api-<ver>` | Public Lich API: version-neutral interfaces + per-version implementations |
 | `perf` | Built-in optimisation modules (§5.3) |
 | `mixin-provider` | Bundled modern Mixin + MixinExtras, and the "always serve ours" rule |
-| `installer` | Version JSON / Prism pack, LWJGL 3 + libs, MCP SRG data, Forge binpatch pre-apply |
+| `installer` | Version JSON / Prism component, LWJGL 3 + libs, MCP SRG data |
 | `testmod` + `harness` | Automated tests (§7) |
 
 To add 1.12.2 later, add `compat-forge-1.12.2`, `compat-mc-1.12.2` and `api-1.12.2`. Nothing else should
@@ -194,8 +231,13 @@ message if a flag is missing.
 
 ### 4.2 LaunchWrapper
 - Same public API **and** the same private field names/types as LaunchWrapper 1.12 (§2.1).
-- Classpath from `java.class.path`. Never a `URLClassLoader` cast.
-- Parent = platform class loader. Keep the original exclusion lists.
+- Class path from Lich's system class loader when it's there (it leaves out the jars Lich replaces),
+  from `java.class.path` otherwise. Never a cast of the JDK's application loader to `URLClassLoader`.
+- Parent = platform class loader. Keep the original exclusion lists; boot adds Lich's packages and
+  `org.objectweb.asm.` (§2.4).
+- Differences from 1.12, all in Lich's favor and covered by tests: Lich's first transformers (the
+  compat pass) also run on transformer-excluded classes, and `getSources()` leaves out the jars in
+  `LichSources` (Lich's own and ASM 9), so FML's mod discovery never scans them.
 - Tweaker chain, `--tweakClass` handling and blackboard keys (`Tweaks`, `TweakClasses`,
   `ArgumentList`, `fml.deobfuscatedEnvironment`) behave exactly like LaunchWrapper 1.12. Write tests
   that compare against the real LaunchWrapper running on Java 8.
@@ -206,6 +248,18 @@ JDK APIs, LWJGL 2-only APIs, `System.setSecurityManager`, `System.exit` (mods on
 `jdk.nashorn`. Log hits per mod.
 
 ### 4.4 Reflection compat (EnumHelper and "setFinalStatic")
+Implemented in Phase 3 for the pattern Forge itself uses (`ObjectHolderRef`, `EnumHelper`), which many
+mods copied: the string constants `"sun.reflect.ReflectionFactory"` (only in classes that also mention
+`newFieldAccessor`/`newConstructorAccessor`), `"sun.reflect.FieldAccessor"` and
+`"sun.reflect.ConstructorAccessor"` are renamed to Lich look-alikes in `dev.lich.compat.jdk.reflect`, so
+the same reflective lookups land on Lich's methods. Field accessors write through
+`jdk.internal.misc.Unsafe`; constructor accessors call a method handle, which works for enum
+constructors. In classes containing `"modifiers"`, `Class.getDeclaredField` hands out a dummy for
+`Field.modifiers` and `Field.set` writes static finals. Still to do (Phase 4): the `Field.set<Primitive>`
+variants, resetting `enumConstantDirectory` when EnumHelper adds constants (verify with a mod that uses
+it), and other spellings of the hack found in the mod corpus.
+
+The original design:
 - **Enums**: when loading game/mod enum classes, strip `ACC_FINAL` from `$VALUES`/`ENUM$VALUES`.
   Create new constants with a `MethodHandle` to the private constructor (`privateLookupIn`), append them
   to `$VALUES`, and reset `Class.enumConstants`/`enumConstantDirectory`. Replace Forge's `EnumHelper`
@@ -214,10 +268,23 @@ JDK APIs, LWJGL 2-only APIs, `System.setSecurityManager`, `System.exit` (mods on
   returns a dummy field, and redirect `Field.set*` so that writes to the dummy are dropped and
   `static final` writes go through `jdk.internal.misc.Unsafe`.
 
-### 4.5 Forge install / binpatches
-The installer takes the user's Forge universal jar, unpacks `binpatches.pack.lzma` with a bundled
-Pack200 decoder (Apache Commons Compress), applies the patches to the vanilla client jar **on the
-user's machine**, and disables runtime patching in `ClassPatchManager`.
+### 4.5 Forge binpatches
+**Changed in Phase 3: patched at runtime, like Forge itself does, not pre-applied by the installer.** The
+compat pass renames `java.util.jar.Pack200` in `ClassPatchManager` to Lich's `Pack200` shim, so FML
+unpacks `binpatches.pack.lzma` and applies the patches as on Java 8. Nothing depends on where a
+launcher keeps the Forge jar, nothing has to be re-run when Forge changes, and no patched Minecraft
+classes are written to disk. Cost: about 1 s per launch for unpacking (cache the unpacked jar later in
+`perf` if it matters).
+
+The shim drives commons-compress's Pack200 port, nested inside `lich-compat-jdk` and loaded by an
+isolated in-memory class loader (its commons-io/commons-lang3 would clash with the game's older copies).
+Three commons-compress behaviors needed working around (`Pack200Test` covers them):
+- It "unwraps" any `FilterInputStream` by reflection to find the file underneath. FML passes an
+  `LzmaInputStream`, so commons-compress read the compressed bytes and unpacked nothing, without an
+  error (the game then ran with no Forge patches at all). The shim hides the stream's type.
+- It leaves the last jar entry open; FML reads the jar bytes without closing the stream.
+- It closes its log stream, `System.out` by default, after every segment. The shim gives it a temp
+  log file instead.
 
 ### 4.6 Launcher integration
 - **Primary**: a version JSON per {MC version × profile} (`inheritsFrom` vanilla,
@@ -226,8 +293,8 @@ user's machine**, and disables runtime patching in `ClassPatchManager`.
   **(verify)**. If it doesn't, the flags have to go in the launcher profile's JVM arguments.
   `devlaunch` already handles both cases.
 - **Prism/MultiMC**: a custom component (`patches/dev.lich.json` with `mainClass`, `+libraries` using
-  `MMC-hint: local`, and `+jvmArgs`) plus an `mmc-pack.json` entry after Minecraft. **Works in Prism
-  11.0.2** (2026-10-24, both versions): `installer`'s `PrismComponent`, run with
+  `MMC-hint: local`, and `+jvmArgs`) plus an `mmc-pack.json` entry after every other component, so
+  Lich's main class wins over Forge's (`net.minecraft.launchwrapper.Launch`). **Works in Prism 11.0.2** (2026-10-24, both versions): `installer`'s `PrismComponent`, run with
   `:installer:installPrism`. The instance also needs `IgnoreJavaCompatibility=true` and
   `AutomaticJava=false`, or Prism falls back to Java 8. Phase 6 adds replacing the LWJGL 2 component.
 - No custom launcher.
@@ -310,9 +377,10 @@ Goal: no bans, no kicks, no disconnects that a plain vanilla/Forge client wouldn
 - No Lich plugin channels, no `REGISTER` additions, no extra packets unless a mod asks for them.
 - Client brand: by default send exactly what the underlying game sends (`vanilla` / `fml,forge`).
   Open question: offer an opt-in `lich` brand.
-- Login/encryption on Java 25: 1.7/1.8 use RSA-1024 + `AES/CFB8/NoPadding` and zlib (1.8). These should
-  still work on 25 **(verify in Phase 1)**. Mojang session-server HTTPS works better on 25 (newer CA
-  certs and TLS).
+- Login/encryption on Java 25: 1.7/1.8 use RSA-1024 + `AES/CFB8/NoPadding` and zlib (1.8). **Works for
+  1.7.10** (2026-10-24: the user joined as.minemen.club with a Microsoft account through Lich on Java 25,
+  so session join, RSA and AES/CFB8 work); 1.8.9 (which adds zlib) still to check. Mojang session-server
+  HTTPS works better on 25 (newer CA certs and TLS).
 
 ### 6.3 Floating point
 Java 17 made all floating point strict (JEP 306). On x86-64, Java 8 already behaved that way (SSE2), so
@@ -349,9 +417,9 @@ differ by 1 ulp between JDKs **(verify)**.
 | Phase | Goal | Done when |
 |---|---|---|
 | 0. Setup ✅ | Gradle multi-project on JDK 25 + `devlaunch`; still to do: decompile LaunchWrapper 1.12, FML 1.7.10/1.8.9; read lwjgl3ify/RFB | **Done 2026-10-24:** repo builds; vanilla 1.8.9 and 1.7.10 reach the main menu on **Java 8** through `devlaunch` (baseline). The Lich version JSON generator moves to Phase 1, since there's no `boot` to point it at yet. |
-| 1. Vanilla 1.8.9 on 25 🟡 | `boot` + `launchwrapper` + flags + log4j safety + profile generator. The SRV fix came free with the class loader parent. The Twitch null stream moved to Phase 8: on 25 it only loads a few unused DLLs | **So far (2026-10-24):** main menu and joining a local server on Java 25 with zero JVM warnings; 18 unit tests. Prism test instances `lich-1.8.9`/`lich-1.7.10` start Lich on Java 25. **Left:** a singleplayer world and a public server with a real account, both in those instances (§4.6) |
-| 2. Vanilla 1.7.10 on 25 🟡 | Same for 1.7.10. No 1.7.10-specific code was needed | Same checks; main menu and local server done |
-| 3. Forge, no mods | Installer pre-patching, ASM upgrade + shims, SecurityManager strip, EnumHelper rewrite | Forge main menu + mod list on both versions |
+| 1. Vanilla 1.8.9 on 25 🟡 | `boot` + `launchwrapper` + flags + log4j safety + profile generator. The SRV fix came free with the class loader parent. The Twitch null stream moved to Phase 8: on 25 it only loads a few unused DLLs | **So far (2026-10-24):** main menu and joining a local server on Java 25 with zero JVM warnings. Prism test instances `lich-1.8.9`/`lich-1.7.10` start Lich on Java 25. **Left:** a singleplayer world and a public server with a real account in `lich-1.8.9` (§4.6) |
+| 2. Vanilla 1.7.10 on 25 ✅ | Same for 1.7.10. No 1.7.10-specific code was needed | **Done 2026-10-24:** in Prism with the user's account, a singleplayer world and a public server (as.minemen.club, about 40 s, chat working), Java 25 |
+| 3. Forge, no mods 🟡 | Runtime binpatching through a Pack200 shim (§4.5), ASM 9 + ASM 5 shims, SecurityManager strip, reflection compat for ObjectHolderRef/EnumHelper (§4.4), Lich's system class loader, hiding Lich's jars from FML, the SoundManager race fix (§2.4) | **So far (2026-10-24):** Forge 1.7.10 and 1.8.9 load ("successfully loaded 3 mods") and reach the main menu on Java 25 through devlaunch, with zero JVM warnings; their logs match the Java 8 Forge baseline apart from Lich's own lines. **Left:** the mod list screen, and Prism instances with Forge on the user's account |
 | 4. Forge mods | Mixin provider, redirect table, reflection compat, JDK shims, harness + corpus | Agreed % of the corpus loads; failures name the mod and the API |
 | 5. Lich mods v0 | `remap` (vanilla-profile SRG), `loader`, `lich.mod.json`, `api` v0 (lifecycle, events, HUD, keybinds, config), FML-hiding, dual jars | A full client mod runs as a Lich mod on both versions, with and without Forge |
 | 6. LWJGL 3 | `compat-lwjgl2` + redirects; Prism LWJGL override | Windows/Linux/macOS ARM native; mods calling GL11/Display/Keyboard work |

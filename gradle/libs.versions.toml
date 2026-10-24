@@ -4,7 +4,11 @@ gson = "2.13.1"
 log4j-legacy = "2.0-beta9"
 jopt-simple = "4.6"
 junit = "5.13.4"
+# Lich ships ASM on the game's classpath and drops Forge's asm-all 5.0.3 (ASM 5 can't read Java 9+ classes).
 asm = "9.8"
+# Pack200 decoder for Forge's binpatches (java.util.jar.Pack200 is gone since Java 14). Nested inside
+# lich-compat-jdk and loaded in isolation, so its commons-io/commons-lang3 never meet the game's older copies.
+commons-compress = "1.27.1"
 
 [libraries]
 gson = { module = "com.google.code.gson:gson", version.ref = "gson" }
@@ -15,3 +19,8 @@ junit-bom = { module = "org.junit:junit-bom", version.ref = "junit" }
 junit-jupiter = { module = "org.junit.jupiter:junit-jupiter" }
 junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher" }
 asm = { module = "org.ow2.asm:asm", version.ref = "asm" }
+asm-tree = { module = "org.ow2.asm:asm-tree", version.ref = "asm" }
+asm-analysis = { module = "org.ow2.asm:asm-analysis", version.ref = "asm" }
+asm-commons = { module = "org.ow2.asm:asm-commons", version.ref = "asm" }
+asm-util = { module = "org.ow2.asm:asm-util", version.ref = "asm" }
+commons-compress = { module = "org.apache.commons:commons-compress", version.ref = "commons-compress" }

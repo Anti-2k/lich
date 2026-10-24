@@ -27,10 +27,13 @@ module("mixin-provider", "core/mixin-provider")
 module("perf", "core/perf")
 
 module("compat-jdk", "compat/jdk")
+module("compat-asm", "compat/asm")
 module("compat-lwjgl2", "compat/lwjgl2")
 
 module("api", "api")
 
+// Fixes that are identical in 1.7.10 and 1.8.9; each version module registers the ones it needs.
+module("shared-compat-mc", "versions/shared/compat-mc")
 for (mc in listOf("1.7.10", "1.8.9")) {
     val prefix = "v" + mc.replace('.', '_')
     for (part in listOf("compat-mc", "compat-forge", "api-impl")) {

@@ -24,7 +24,7 @@ class PrismComponentTest {
             """;
 
     @Test
-    void addsTheComponentAfterMinecraftAndCopiesTheJars(@TempDir Path instance, @TempDir Path build) throws Exception {
+    void addsTheComponentLastAndCopiesTheJars(@TempDir Path instance, @TempDir Path build) throws Exception {
         Files.writeString(instance.resolve("mmc-pack.json"), PACK);
         Path jar = Files.write(build.resolve("lich-boot-1.0.jar"), new byte[]{1});
 
@@ -47,5 +47,20 @@ class PrismComponentTest {
         assertEquals("local", patch.getAsJsonArray("+libraries").get(0).getAsJsonObject().get("MMC-hint").getAsString());
         assertEquals("--enable-native-access=ALL-UNNAMED", patch.getAsJsonArray("+jvmArgs").get(0).getAsString());
         assertTrue(Files.isRegularFile(instance.resolve("libraries/lich-boot-1.0.jar")));
+    }
+
+    @Test
+    void goesAfterForgeSoItsMainClassWins() {
+        JsonObject pack = JsonParser.parseString("""
+                {"components": [
+                  {"uid": "net.minecraft", "version": "1.8.9"},
+                  {"uid": "dev.lich", "version": "0.9"},
+                  {"uid": "net.minecraftforge", "version": "11.15.1.2318"}
+                ]}
+                """).getAsJsonObject();
+        List<String> uids = new ArrayList<>();
+        PrismComponent.withLichComponent(pack, "1.0").getAsJsonArray("components")
+                .forEach(c -> uids.add(c.getAsJsonObject().get("uid").getAsString()));
+        assertEquals(List.of("net.minecraft", "net.minecraftforge", "dev.lich"), uids);
     }
 }

@@ -1,5 +1,6 @@
 package net.minecraft.launchwrapper;
 
+import dev.lich.launchwrapper.LichSources;
 import dev.lich.launchwrapper.LichTransformers;
 import org.apache.logging.log4j.Level;
 import org.apache.logging.log4j.LogManager;
@@ -46,7 +47,9 @@ import java.util.jar.Manifest;
  *       another thread loads classes can't throw {@code ConcurrentModificationException}.</li>
  *   <li>Lich's own transformers ({@link LichTransformers}) run before and after the registered ones.
  *       They're kept out of {@link #getTransformers()}, so mods that reorder or remove transformers
- *       can't disturb them.</li>
+ *       can't disturb them. The first ones (the compat pass) also run on transformer-excluded classes.</li>
+ *   <li>{@link #getSources()} leaves out the jars in {@link LichSources}, so FML's mod discovery
+ *       doesn't scan Lich's own jars.</li>
  * </ul>
  */
 public class LaunchClassLoader extends URLClassLoader {
@@ -150,7 +153,7 @@ public class LaunchClassLoader extends URLClassLoader {
         for (final String exception : transformerExceptions) {
             if (name.startsWith(exception)) {
                 try {
-                    final Class<?> clazz = super.findClass(name);
+                    final Class<?> clazz = findExcludedClass(name);
                     cachedClasses.put(name, clazz);
                     return clazz;
                 } catch (ClassNotFoundException e) {
@@ -229,6 +232,56 @@ public class LaunchClassLoader extends URLClassLoader {
             }
             throw new ClassNotFoundException(name, e);
         }
+    }
+
+    /**
+     * A class that's excluded from transformers. 1.12 defines it untouched with {@code URLClassLoader}'s
+     * {@code findClass}, and so does Lich unless its first transformers (the compat pass) change it:
+     * FML keeps its own patcher and deobfuscation classes out of transformers, and those call removed
+     * JDK APIs too. A changed class gets the code source {@code URLClassLoader} would have given it.
+     */
+    private Class<?> findExcludedClass(final String name) throws ClassNotFoundException {
+        if (LichTransformers.first().isEmpty()) {
+            return super.findClass(name);
+        }
+        final byte[] bytes;
+        try {
+            bytes = getClassBytes(name);
+        } catch (IOException e) {
+            throw new ClassNotFoundException(name, e);
+        }
+        final byte[] compat = bytes == null ? null : runAll(LichTransformers.first(), name, name, bytes);
+        if (compat == bytes) {
+            return super.findClass(name);
+        }
+
+        final String fileName = name.replace('.', '/').concat(".class");
+        final URLConnection connection = findCodeSourceConnectionFor(fileName);
+        URL location = connection == null ? null : connection.getURL();
+        CodeSigner[] signers = null;
+        Manifest manifest = null;
+        if (connection instanceof JarURLConnection jarConnection) {
+            try {
+                location = jarConnection.getJarFileURL();
+                manifest = jarConnection.getManifest();
+                final JarEntry entry = jarConnection.getJarEntry();
+                signers = entry == null ? null : entry.getCodeSigners();
+            } catch (IOException e) {
+                throw new ClassNotFoundException(name, e);
+            }
+        }
+        final int lastDot = name.lastIndexOf('.');
+        if (lastDot > -1) {
+            final String packageName = name.substring(0, lastDot);
+            if (getDefinedPackage(packageName) == null) {
+                final Manifest packageManifest = manifest;
+                final URL packageLocation = location;
+                definePackageOnce(packageName, () -> packageManifest != null
+                        ? definePackage(packageName, packageManifest, packageLocation)
+                        : definePackage(packageName, null, null, null, null, null, null, null));
+            }
+        }
+        return defineClass(name, compat, 0, compat.length, new CodeSource(location, signers));
     }
 
     /** Defines a package, or returns the one another thread defined between our lookup and now. */
@@ -345,7 +398,18 @@ public class LaunchClassLoader extends URLClassLoader {
     }
 
     public List<URL> getSources() {
-        return sources;
+        if (!LichSources.anyHidden()) {
+            return sources;
+        }
+        // A copy: callers that add to the list expected to add to the real one, but none of the
+        // mods that read it do (they call addURL).
+        final List<URL> visible = new ArrayList<>(sources.size());
+        for (final URL source : sources) {
+            if (!LichSources.isHidden(source)) {
+                visible.add(source);
+            }
+        }
+        return visible;
     }
 
     public List<IClassTransformer> getTransformers() {

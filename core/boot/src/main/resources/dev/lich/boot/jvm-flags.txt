@@ -17,3 +17,9 @@
 --enable-native-access=ALL-UNNAMED
 # LWJGL 2 and Netty use sun.misc.Unsafe memory access; JDK 24+ warns otherwise (JEP 498).
 --sun-misc-unsafe-memory-access=allow
+# Lich's system class loader, so its compat pass also reaches classes LaunchWrapper keeps out of
+# LaunchClassLoader (tweakers, FML's launch code). See LichSystemClassLoader.
+-Djava.system.class.loader=dev.lich.boot.LichSystemClassLoader
+# The JDK warns at startup that a custom system class loader turns off CDS for application classes.
+# Expected, and they come from LaunchClassLoader anyway; this hides only that tag's messages.
+-Xlog:cds=off

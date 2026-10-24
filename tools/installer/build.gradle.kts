@@ -14,8 +14,9 @@ application {
     mainClass = "dev.lich.installer.ProfileInstaller"
 }
 
-// The Lich jars a profile puts on the game's class path, without their dependencies: the game's own
-// libraries (log4j, jopt-simple, ...) come from the vanilla version the profile inherits from.
+// The jars a Lich profile puts on the game's class path: Lich's modules and ASM 9, without other
+// dependencies, because the game's own libraries (log4j, jopt-simple, ...) come from the version the
+// profile inherits from.
 val lich = configurations.dependencyScope("lich")
 val lichRuntime = configurations.resolvable("lichRuntime") {
     extendsFrom(lich.get())
@@ -30,6 +31,17 @@ val lichRuntime = configurations.resolvable("lichRuntime") {
 dependencies {
     add("lich", project(":boot"))
     add("lich", project(":launchwrapper"))
+    add("lich", project(":transform"))
+    add("lich", project(":compat-jdk"))
+    add("lich", project(":compat-asm"))
+    add("lich", project(":shared-compat-mc"))
+    add("lich", project(":v1_7_10-compat-mc"))
+    add("lich", project(":v1_8_9-compat-mc"))
+    add("lich", libs.asm)
+    add("lich", libs.asm.tree)
+    add("lich", libs.asm.analysis)
+    add("lich", libs.asm.commons)
+    add("lich", libs.asm.util)
 }
 
 /** Runs ProfileInstaller with the Lich jars, the JVM flags and [target] (--root or --prism-instance). */
@@ -38,6 +50,17 @@ fun JavaExec.runInstaller(target: Provider<List<String>>) {
     val flags = rootProject.layout.projectDirectory.file("core/boot/src/main/resources/dev/lich/boot/jvm-flags.txt").asFile
     val jars: FileCollection = lichRuntime.get()
     val version = project.version.toString()
+    // group:artifact:version=jar for each library; Lich's own modules are dev.lich:lich-<name>.
+    val libraries = lichRuntime.get().incoming.artifacts.resolvedArtifacts.map { artifacts ->
+        artifacts.map { artifact ->
+            val coordinates = when (val id = artifact.id.componentIdentifier) {
+                is ModuleComponentIdentifier -> "${id.group}:${id.module}:${id.version}"
+                is ProjectComponentIdentifier -> "dev.lich:lich-${id.projectName}:$version"
+                else -> throw GradleException("Unexpected Lich library $id")
+            }
+            "$coordinates=${artifact.file.absolutePath}"
+        }
+    }
 
     group = "lich"
     inputs.files(jars).withPropertyName("lichJars")
@@ -45,10 +68,7 @@ fun JavaExec.runInstaller(target: Provider<List<String>>) {
     mainClass = application.mainClass
     argumentProviders.add(CommandLineArgumentProvider {
         listOf("--mc", mcVersion.get(), "--flags", flags.absolutePath) + target.get() +
-            jars.files.flatMap { jar ->
-                val artifact = jar.name.removeSuffix("-$version.jar")
-                listOf("--library", "dev.lich:$artifact:$version=${jar.absolutePath}")
-            }
+            libraries.get().flatMap { listOf("--library", it) }
     })
 }
 
