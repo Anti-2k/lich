@@ -13,7 +13,11 @@ a phase, and update it when a decision changes or a **(verify)** item gets check
 - JDK 25 (Temurin, installed at `C:\Program Files\Eclipse Adoptium\jdk-25.*`) builds everything and runs
   the Gradle daemon (`gradle/gradle-daemon-jvm.properties`). JDK 8 (`C:\Program Files\Java\jdk-8`)
   runs the baseline games. Toolchain auto-download is off, so JDKs are installed by hand.
-- `./gradlew build` builds every module.
+- `./gradlew build` builds every module and runs the unit tests (JUnit 5). `launchwrapper`'s tests load
+  the `fixtures` source set through `LaunchClassLoader`. Those classes are deliberately kept off the
+  test classpath.
+- The game's own libraries (log4j 2.0-beta9, jopt-simple 4.6) are `compileOnly`: the vanilla version
+  provides them at runtime, and Lich never ships them.
 - Gradle 9.8.2 with the configuration cache on. Inside task lambdas, use only locals of the task's
   configure block. Script-level vals capture the script object, and the cache rejects it.
 
@@ -24,13 +28,25 @@ a phase, and update it when a decision changes or a **(verify)** item gets check
 `run/cache`, and starts the game offline (user `Dev`) in `run/<version>`.
 
 ```
-./gradlew :devlaunch:runGame -Plich.mc=1.8.9 "-Plich.gameJavaHome=C:/Program Files/Java/jdk-8"
-./gradlew :devlaunch:runGame -Plich.mc=1.7.10 "-Plich.gameJavaHome=C:/Program Files/Eclipse Adoptium/jdk-25.0.4.101-hotspot"
+# Vanilla baseline on Java 8
+./gradlew :devlaunch:runGame "-Plich.mc=1.8.9" "-Plich.gameJavaHome=C:/Program Files/Java/jdk-8"
+# Through Lich on Java 25: writes the lich-<mc> profile into run/cache first (:installer:installDevProfile)
+./gradlew :devlaunch:runGame "-Plich.profile=lich" "-Plich.mc=1.7.10" "-Plich.gameJavaHome=C:/Program Files/Eclipse Adoptium/jdk-25.0.4.101-hotspot"
+# Join a server straight away, or just print the command
+./gradlew :devlaunch:runGame "-Plich.profile=lich" "-Plich.args=--game-arg --server --game-arg 127.0.0.1 --game-arg --port --game-arg 25599"
 ./gradlew :devlaunch:runGame "-Plich.args=--dry-run --skip-assets"
 ```
 
+- In PowerShell, **quote every `-P` argument**. Otherwise PowerShell splits `-Plich.profile=lich` at
+  the dot and Gradle reports an unknown task.
 - `-Plich.gameJavaHome` is needed for JDKs Gradle doesn't detect (unzipped ones have no registry entry).
   Without it, `-Plich.gameJava=<n>` (default 8) picks a detected toolchain.
+- The Lich profile's game directory is `run/lich-<mc>`, separate from vanilla's `run/<mc>`. Boot logs
+  `Lich <version> on Java …, <profile> profile` as its first line.
+- Local test servers: `run/server-1.8.9` (port 25599) and `run/server-1.7.10` (port 25598), vanilla
+  `server.jar` from the version JSON, offline mode, bound to `127.0.0.1` only. Start them with JDK 8
+  (`java -jar server.jar nogui` in that folder) and wait for `Done (` in the console. Stop them by the
+  PID that owns the listening port (`Get-NetTCPConnection -LocalPort 25599 -State Listen`).
 - Other devlaunch options (`--version-json`, `--jvm-arg`, `--extra-cp`, `--main-class`, …): see `Options.USAGE`.
 - The game's stdout is log4j XML (Mojang's launcher config). Read `run/<version>/logs/latest.log`
   for plain text. The main menu is reached once it shows `Sound engine started` and a `…atlas` line.
@@ -50,7 +66,15 @@ tools/              devlaunch, installer
 test/               testmod, harness
 ```
 
-Most modules are still placeholders. Their build file comment names the phase and the PLAN.md section.
+Working so far: `launchwrapper` (Lich's LaunchWrapper 1.12: `net.minecraft.launchwrapper.*`, plus
+`dev.lich.launchwrapper` for the launch logic, hooks and Lich's first/last transformers), `boot`
+(`dev.lich.boot.Main`: flag check, safe logging, profile, vanilla tweaker), `installer`
+(`ProfileInstaller` writes `versions/lich-<mc>/` and `libraries/`) and `devlaunch`. The other modules
+are placeholders. Each one's build file comment names its phase and PLAN.md section.
+
+LaunchWrapper compatibility rule: `LaunchClassLoader` keeps 1.12's private fields by name and type,
+because Mixin, coremods and FoamFix-style mods reflect on them (`LaunchClassLoaderTest` pins them). Lich
+code doesn't add public API to the `net.minecraft.launchwrapper` classes. Hooks go in `dev.lich.launchwrapper`.
 
 ## Conventions
 

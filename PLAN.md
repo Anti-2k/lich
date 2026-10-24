@@ -74,13 +74,22 @@ Never redistribute Minecraft or patched Forge binaries. Patch at load time, or o
   shims for any ASM classes FML uses that newer ASM removed (e.g. `RemappingClassAdapter` **(verify)**).
 - **Mixin**: mods shade Mixin 0.7.x. Provide one modern Mixin (+ MixinExtras) and always serve
   `org.spongepowered.*` from it, whatever is shaded in mod jars.
-- **SRV lookup**: vanilla `ServerAddress` loads `com.sun.jndi.dns.DnsContextFactory` through JNDI. Needs
-  `--add-modules jdk.naming.dns --add-exports jdk.naming.dns/com.sun.jndi.dns=java.naming`.
+- **SRV lookup (tested 2026-10-24)**: vanilla `ServerAddress` loads `com.sun.jndi.dns.DnsContextFactory`
+  with the game's class loader, then asks JNDI for it. With LaunchWrapper 1.12's bootstrap-only parent,
+  that throws `ClassNotFoundException` on Java 9+, and vanilla **silently** falls back to `<host>:25565`.
+  So `hypixel.net` (SRV → `mc.hypixel.net`) connects to the wrong host. Lunar's
+  `--add-modules jdk.naming.dns --add-exports …` flags don't fix this. With Lich's platform-loader parent
+  it works with **no flags**: JNDI finds the factory through `ServiceLoader`. Covered by
+  `LaunchClassLoaderTest.platformModulesAreVisible`.
 - **`java.version` parsing**: code that expects `1.x` breaks on `25`. Audit FML, Mixin 0.7, LWJGL 2 and
   popular mods.
 - **Default charset is UTF-8** (Java 18). Usually harmless.
-- **log4j 2.0-beta9** is Log4Shell-vulnerable. Apply Mojang's `%msg{nolookups}` config fix or patch
-  `JndiLookup` out. Don't swap log4j versions; FML touches log4j-core internals.
+- **log4j 2.0-beta9** is Log4Shell-vulnerable, and both client jars bundle an unfiltered `log4j2.xml`.
+  Mojang's fix for these versions (`client-1.7.xml`, passed by the version JSON) is a `RegexFilter`
+  that drops every message containing `${…}`, not `%msg{nolookups}`. When a launcher passes no config,
+  `boot` points log4j at its own copy of that filter (`log4j2-safe.xml`, tested against beta9 in
+  `SafeLoggingTest`). log4j is a class loader exclusion, so transformers can't patch `JndiLookup`.
+  Don't swap log4j versions; FML touches log4j-core internals.
 - **Twitch SDK** (dead service, native libs): patch in a null stream so nothing loads.
 - **Scala 2.11** (Forge 1.7.10 ships it for Scala mods like ForgeMultipart/OpenComputers): test on 25.
 
@@ -90,7 +99,8 @@ Never redistribute Minecraft or patched Forge binaries. Patch at load time, or o
   from `org.lwjgl.Sys` (fixed by `--enable-native-access=ALL-UNNAMED`) and
   `sun.misc.Unsafe::objectFieldOffset` from `org.lwjgl.MemoryUtilSun$AccessorUnsafe`. Once a future
   JDK removes that method, LWJGL 2 falls back to reflection on `Buffer.address`, which needs
-  `--add-opens java.base/java.nio`. Still untested: worlds, servers, 1.7.10 on 25, Linux.
+  `--add-opens java.base/java.nio`. Through Lich (Phase 1), both 1.8.9 and 1.7.10 also join a local
+  server on Java 25 with no warnings at all. Still untested: singleplayer worlds, Linux, macOS.
 - LWJGL 2 is broken on Apple Silicon and has old input/DPI/Wayland problems.
 - LWJGL 3 reuses package/class names with different signatures, and its JNI symbols are tied to
   `org.lwjgl.*`, so it **can't be relocated**. Keep LWJGL 3 at `org.lwjgl` and **rewrite consumer
@@ -172,12 +182,13 @@ transformers**. Patch game classes with **Mixins**.
 --add-opens java.base/sun.nio.ch=ALL-UNNAMED
 --add-exports java.base/jdk.internal.misc=ALL-UNNAMED
 --add-exports java.base/jdk.internal.reflect=ALL-UNNAMED
---add-modules jdk.naming.dns
---add-exports jdk.naming.dns/com.sun.jndi.dns=java.naming
 --enable-native-access=ALL-UNNAMED
 --sun-misc-unsafe-memory-access=allow
 ```
-Start broad, then narrow the list once the test matrix passes. Launchers start the game with
+The source of truth is `core/boot/src/main/resources/dev/lich/boot/jvm-flags.txt`: the profile
+generator writes it into the version JSON and `boot` checks it at startup. The `jdk.naming.dns` flags
+were dropped once SRV turned out not to need them (§2.4). Start broad, then narrow the list once the
+test matrix passes. Launchers start the game with
 `-cp … mainClass`, so manifest `Add-Opens` doesn't apply. `boot` refuses to start with a readable
 message if a flag is missing.
 
@@ -334,8 +345,8 @@ differ by 1 ulp between JDKs **(verify)**.
 | Phase | Goal | Done when |
 |---|---|---|
 | 0. Setup ✅ | Gradle multi-project on JDK 25 + `devlaunch`; still to do: decompile LaunchWrapper 1.12, FML 1.7.10/1.8.9; read lwjgl3ify/RFB | **Done 2026-10-24:** repo builds; vanilla 1.8.9 and 1.7.10 reach the main menu on **Java 8** through `devlaunch` (baseline). The Lich version JSON generator moves to Phase 1, since there's no `boot` to point it at yet. |
-| 1. Vanilla 1.8.9 on 25 | `boot` + `launchwrapper` + flags + SRV/log4j/Twitch patches; protocol checks (§6.2) | Main menu, singleplayer, joins a local server **and** a public server |
-| 2. Vanilla 1.7.10 on 25 | Same for 1.7.10 | Same checks |
+| 1. Vanilla 1.8.9 on 25 🟡 | `boot` + `launchwrapper` + flags + log4j safety + profile generator. The SRV fix came free with the class loader parent. The Twitch null stream moved to Phase 8: on 25 it only loads a few unused DLLs | **So far (2026-10-24):** main menu and joining a local server on Java 25 with zero JVM warnings; 18 unit tests. **Left:** a singleplayer world and a public server with a real account (needs a real launcher, §4.6) |
+| 2. Vanilla 1.7.10 on 25 🟡 | Same for 1.7.10. No 1.7.10-specific code was needed | Same checks; main menu and local server done |
 | 3. Forge, no mods | Installer pre-patching, ASM upgrade + shims, SecurityManager strip, EnumHelper rewrite | Forge main menu + mod list on both versions |
 | 4. Forge mods | Mixin provider, redirect table, reflection compat, JDK shims, harness + corpus | Agreed % of the corpus loads; failures name the mod and the API |
 | 5. Lich mods v0 | `remap` (vanilla-profile SRG), `loader`, `lich.mod.json`, `api` v0 (lifecycle, events, HUD, keybinds, config), FML-hiding, dual jars | 2k client runs as a Lich mod on both versions, with and without Forge |

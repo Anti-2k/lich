@@ -1,5 +1,17 @@
 [versions]
 gson = "2.13.1"
+# The versions Minecraft 1.7.10/1.8.9 put on the classpath. Lich compiles against them and never ships them.
+log4j-legacy = "2.0-beta9"
+jopt-simple = "4.6"
+junit = "5.13.4"
+asm = "9.8"
 
 [libraries]
 gson = { module = "com.google.code.gson:gson", version.ref = "gson" }
+log4j-api-legacy = { module = "org.apache.logging.log4j:log4j-api", version.ref = "log4j-legacy" }
+log4j-core-legacy = { module = "org.apache.logging.log4j:log4j-core", version.ref = "log4j-legacy" }
+jopt-simple = { module = "net.sf.jopt-simple:jopt-simple", version.ref = "jopt-simple" }
+junit-bom = { module = "org.junit:junit-bom", version.ref = "junit" }
+junit-jupiter = { module = "org.junit.jupiter:junit-jupiter" }
+junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher" }
+asm = { module = "org.ow2.asm:asm", version.ref = "asm" }
