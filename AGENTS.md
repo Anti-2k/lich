@@ -54,6 +54,9 @@ a phase, and update it when a decision changes or a **(verify)** item gets check
   (`java -jar server.jar nogui` in that folder) and wait for `Done (` in the console. Stop them by the
   PID that owns the listening port (`Get-NetTCPConnection -LocalPort 25599 -State Listen`).
 - Other devlaunch options (`--version-json`, `--jvm-arg`, `--extra-cp`, `--main-class`, …): see `Options.USAGE`.
+- Lich profiles run the game on LWJGL 3 (PLAN.md §2.5). `--jvm-arg -Dlich.lwjgl=2` runs the same profile on the
+  game's LWJGL 2, to tell a Lich bug from an LWJGL 3 one. Boot logs each LWJGL call it rewrote (`LWJGL 3: …`),
+  once per member and package.
 - The game's stdout is log4j XML (Mojang's launcher config). Read `run/<version>/logs/latest.log`
   for plain text. The main menu is reached once it shows `Sound engine started` and a `…atlas` line.
 - To stop a game you started, match the java process on `lich\run\cache` and its main class
@@ -109,6 +112,12 @@ Working so far:
   register their rules with it (`JdkCompat`, `AsmCompat`).
 - `shared-compat-mc`, `v1_7_10-compat-mc` and `v1_8_9-compat-mc`: game fixes on SRG names, run as
   Lich's last transformer in the Forge profile.
+- `compat-lwjgl2`: LWJGL 2's API on LWJGL 3 (PLAN.md §2.5). LWJGL 2-only classes under their own names
+  (`org.lwjgl.opengl.Display`, ...), with their logic in `dev.lich.compat.lwjgl2.display`; `Lwjgl2Compat`'s
+  call table for members LWJGL 3 renamed (`renames.txt`, generated) or dropped (the `Lwjgl2*` mirrors).
+  `./gradlew :compat-lwjgl2:checkLinkage` lists the LWJGL references in the game, Forge and `run/corpus`
+  that still don't link; rerun it after changing the table. `generateRenames` and `generateCapabilities`
+  regenerate the generated parts after an LWJGL update.
 - `installer`: `ProfileInstaller` writes `versions/{lich,forge,lich-forge}-<mc>/` and `libraries/`, and
   `PrismComponent` writes Prism components.
 - `devlaunch`.
@@ -116,7 +125,10 @@ Working so far:
 The other modules are placeholders. Each one's build file comment names its phase and PLAN.md section.
 
 How Lich's classes load, and where a new class goes:
-- `LichSystemClassLoader` defines everything on the class path. Its compat pass skips `dev.lich.*` and ASM.
+- `LichSystemClassLoader` defines everything on the class path. Its compat pass skips `dev.lich.*`, ASM and
+  the jars Lich ships (its own, LWJGL 3, Nashorn). It also drops LWJGL 2 when LWJGL 3 and `compat-lwjgl2` are there.
+- LaunchWrapper itself excludes `org.lwjgl.`, so `compat-lwjgl2`'s `org.lwjgl.*` classes, like LWJGL 3's,
+  come from the system class loader: one copy each.
 - Boot makes `dev.lich.boot.`, `.launchwrapper.`, `.transform.` and `.compat.` class loader exclusions,
   plus `org.objectweb.asm.` (one ASM for everyone). So shims that game or mod code calls must live under
   `dev.lich.compat.`, and there is one copy of each, whichever loader the caller comes from.
@@ -129,8 +141,9 @@ How Lich's classes load, and where a new class goes:
 LaunchWrapper compatibility rule: `LaunchClassLoader` keeps 1.12's private fields by name and type,
 because Mixin, coremods and FoamFix-style mods reflect on them (`LaunchClassLoaderTest` pins them). Lich
 code doesn't add public API to the `net.minecraft.launchwrapper` classes. Hooks go in `dev.lich.launchwrapper`.
-Two deliberate differences: the compat pass also runs on transformer-excluded classes, and
-`getSources()` leaves out `LichSources`.
+Three deliberate differences: Lich's first and last transformers also run on transformer-excluded classes,
+`getSources()` leaves out `LichSources`, and `LichExclusions` (`org.lwjgl.` on LWJGL 3) hold even when a
+mod removes the same prefix from `classLoaderExceptions` (OneConfig does).
 
 ## Conventions
 

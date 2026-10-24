@@ -66,12 +66,50 @@ class LichSystemClassLoaderTest {
         List<URL> lich = new ArrayList<>();
         String classPath = String.join(File.pathSeparator, List.of(launchWrapper.toString(), lichLaunchWrapper.toString(),
                 asm5.toString(), asm9.toString(), shaded.toString(), lichBoot.toString(), forge.toString(), classesDir.toString()));
-        URL[] urls = LichSystemClassLoader.classPath(classPath, dropped, lich);
+        URL[] urls = LichSystemClassLoader.classPath(classPath, null, dropped, lich);
 
         assertEquals(List.of(launchWrapper.toString(), asm5.toString()), dropped);
         assertEquals(List.of(url(lichLaunchWrapper), url(asm9), url(shaded), url(lichBoot), url(forge), url(classesDir)), List.of(urls));
         assertEquals(List.of(url(asm9), url(lichBoot)), lich, "Lich's jars and ASM 9, which FML mustn't scan");
         assertEquals(LichSystemClassLoader.Kind.OTHER, LichSystemClassLoader.classify(classesDir));
+    }
+
+    @Test
+    void choosesBetweenLwjgl2AndLwjgl3(@TempDir Path dir) throws IOException {
+        Path lwjgl2 = jar(dir.resolve("lwjgl-2.9.4.jar"), null, "org/lwjgl/Sys.class", "org/lwjgl/opengl/Display.class");
+        Path lwjglUtil = jar(dir.resolve("lwjgl_util-2.9.4.jar"), null, "org/lwjgl/util/glu/GLU.class");
+        Path lwjgl3 = jar(dir.resolve("lwjgl-3.3.6.jar"), lwjgl3Manifest(), "org/lwjgl/system/Library.class");
+        Path natives = jar(dir.resolve("lwjgl-3.3.6-natives-windows.jar"), lwjgl3Manifest(), "windows/x64/org/lwjgl/lwjgl.dll");
+        Path api = jar(dir.resolve("lich-compat-lwjgl2.jar"), titled("lich-compat-lwjgl2"),
+                "org/lwjgl/Sys.class", "dev/lich/compat/lwjgl2/Lwjgl2Compat.class");
+        String all = String.join(File.pathSeparator, List.of(api.toString(), lwjgl3.toString(), natives.toString(),
+                lwjgl2.toString(), lwjglUtil.toString()));
+
+        List<String> dropped = new ArrayList<>();
+        List<URL> lich = new ArrayList<>();
+        URL[] urls = LichSystemClassLoader.classPath(all, null, dropped, lich);
+        assertEquals(List.of(lwjgl2.toString()), dropped, "LWJGL 3 replaces LWJGL 2; lwjgl_util stays");
+        assertEquals(List.of(url(api), url(lwjgl3), url(natives), url(lwjglUtil)), List.of(urls));
+        assertEquals(List.of(url(api), url(lwjgl3), url(natives)), lich, "hidden from FML like Lich's own jars");
+
+        dropped.clear();
+        lich.clear();
+        urls = LichSystemClassLoader.classPath(all, "2", dropped, lich);
+        assertEquals(List.of(api.toString(), lwjgl3.toString(), natives.toString()), dropped, "-Dlich.lwjgl=2 keeps LWJGL 2");
+        assertEquals(List.of(url(lwjgl2), url(lwjglUtil)), List.of(urls));
+
+        dropped.clear();
+        LichSystemClassLoader.classPath(String.join(File.pathSeparator, List.of(lwjgl3.toString(), lwjgl2.toString())),
+                null, dropped, new ArrayList<>());
+        assertEquals(List.of(lwjgl3.toString()), dropped, "without Lich's LWJGL 2 API, LWJGL 3 can't replace LWJGL 2");
+    }
+
+    private static Manifest lwjgl3Manifest() {
+        Manifest manifest = new Manifest();
+        manifest.getMainAttributes().put(Attributes.Name.MANIFEST_VERSION, "1.0");
+        manifest.getMainAttributes().put(Attributes.Name.SPECIFICATION_VENDOR, "lwjgl.org");
+        manifest.getMainAttributes().put(Attributes.Name.SPECIFICATION_VERSION, "3.3.6");
+        return manifest;
     }
 
     private static URL url(Path path) throws IOException {

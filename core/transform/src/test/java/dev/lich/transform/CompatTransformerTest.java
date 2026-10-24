@@ -273,6 +273,126 @@ class CompatTransformerTest {
         assertSame(bytes, compat.transform("test.Other", bytes));
     }
 
+    private final CompatTransformer tables = CompatTransformer.builder()
+            .calls(new CompatTransformer.CallTable("old/gl/")
+                    .redirect("old/gl/GL11", "glFog", "(ILjava/nio/FloatBuffer;)V", "shim/GL11")
+                    .redirect("old/gl/Buffer", "flip", "()Lold/gl/Buffer;", "shim/Buffer")
+                    .move("old/gl/GL11", "glGetFloat", "(ILjava/nio/FloatBuffer;)V", "old/gl/GL11", "glGetFloatv",
+                            "(ILjava/nio/FloatBuffer;)V")
+                    .redirectConstructor("old/gl/Buffer", "(Ljava/nio/ByteBuffer;)V", "shim/Buffer", "newBuffer"))
+            .listener((className, what) -> changes.add(className + ": " + what))
+            .build();
+
+    @Test
+    void callTablesRedirectRenameAndReplaceConstructors() {
+        byte[] bytes = generate("test.Renderer", mv -> {
+            mv.visitInsn(Opcodes.ICONST_0);
+            mv.visitInsn(Opcodes.ACONST_NULL);
+            mv.visitMethodInsn(Opcodes.INVOKESTATIC, "old/gl/GL11", "glFog", "(ILjava/nio/FloatBuffer;)V", false);
+            mv.visitInsn(Opcodes.ICONST_0);
+            mv.visitInsn(Opcodes.ACONST_NULL);
+            mv.visitMethodInsn(Opcodes.INVOKESTATIC, "old/gl/GL11", "glGetFloat", "(ILjava/nio/FloatBuffer;)V", false);
+            mv.visitTypeInsn(Opcodes.NEW, "old/gl/Buffer");
+            mv.visitInsn(Opcodes.DUP);
+            mv.visitInsn(Opcodes.ACONST_NULL);
+            mv.visitMethodInsn(Opcodes.INVOKESPECIAL, "old/gl/Buffer", "<init>", "(Ljava/nio/ByteBuffer;)V", false);
+            mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "old/gl/Buffer", "flip", "()Lold/gl/Buffer;", false);
+            mv.visitInsn(Opcodes.POP);
+        });
+        ClassNode node = read(tables.transform("test.Renderer", bytes));
+        List<String> calls = calls(node).stream()
+                .map(call -> call.getOpcode() + " " + call.owner + "." + call.name + call.desc).toList();
+        assertEquals(List.of(
+                Opcodes.INVOKESTATIC + " shim/GL11.glFog(ILjava/nio/FloatBuffer;)V",
+                Opcodes.INVOKESTATIC + " old/gl/GL11.glGetFloatv(ILjava/nio/FloatBuffer;)V",
+                Opcodes.INVOKESTATIC + " shim/Buffer.newBuffer(Ljava/nio/ByteBuffer;)Lold/gl/Buffer;",
+                Opcodes.INVOKESTATIC + " shim/Buffer.flip(Lold/gl/Buffer;)Lold/gl/Buffer;"), calls);
+        node.methods.getFirst().instructions.forEach(insn -> {
+            assertFalse(insn.getOpcode() == Opcodes.NEW || insn.getOpcode() == Opcodes.DUP);
+        });
+        assertEquals(4, changes.size());
+
+        // Reported once per namespace, not per class.
+        tables.transform("test.Renderer2", generate("test.Renderer2", mv -> {
+            mv.visitInsn(Opcodes.ICONST_0);
+            mv.visitInsn(Opcodes.ACONST_NULL);
+            mv.visitMethodInsn(Opcodes.INVOKESTATIC, "old/gl/GL11", "glFog", "(ILjava/nio/FloatBuffer;)V", false);
+        }));
+        assertEquals(4, changes.size());
+    }
+
+    @Test
+    void constructorRedirectsLeaveSuperCallsAndOtherConstructorsAlone() {
+        ClassWriter writer = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+        writer.visit(Opcodes.V1_8, Opcodes.ACC_PUBLIC, "test/MyBuffer", null, "old/gl/Buffer", null);
+        MethodVisitor mv = writer.visitMethod(Opcodes.ACC_PUBLIC, "<init>", "()V", null, null);
+        mv.visitCode();
+        // super(null) matches the redirected constructor but has no NEW; new Buffer(0) isn't redirected.
+        mv.visitVarInsn(Opcodes.ALOAD, 0);
+        mv.visitInsn(Opcodes.ACONST_NULL);
+        mv.visitMethodInsn(Opcodes.INVOKESPECIAL, "old/gl/Buffer", "<init>", "(Ljava/nio/ByteBuffer;)V", false);
+        mv.visitTypeInsn(Opcodes.NEW, "old/gl/Buffer");
+        mv.visitInsn(Opcodes.DUP);
+        mv.visitInsn(Opcodes.ICONST_0);
+        mv.visitMethodInsn(Opcodes.INVOKESPECIAL, "old/gl/Buffer", "<init>", "(I)V", false);
+        mv.visitInsn(Opcodes.POP);
+        mv.visitInsn(Opcodes.RETURN);
+        mv.visitMaxs(0, 0);
+        mv.visitEnd();
+        writer.visitEnd();
+
+        byte[] bytes = writer.toByteArray();
+        assertSame(bytes, tables.transform("test.MyBuffer", bytes));
+    }
+
+    @Test
+    void callTablesOnlyLookAtClassesWithTheirGate() {
+        byte[] bytes = generate("test.Plain", mv -> {
+            mv.visitInsn(Opcodes.ICONST_0);
+            mv.visitInsn(Opcodes.ACONST_NULL);
+            mv.visitMethodInsn(Opcodes.INVOKESTATIC, "new/gl/GL11", "glFog", "(ILjava/nio/FloatBuffer;)V", false);
+        });
+        assertSame(bytes, tables.transform("test.Plain", bytes));
+    }
+
+    @Test
+    void firstArgumentsArePassedThroughTheFilterEvenInSuperCalls() throws Exception {
+        CompatTransformer filtering = CompatTransformer.builder()
+                .filterFirstArgument("java/net/URLClassLoader", "<init>", "([Ljava/net/URL;Ljava/lang/ClassLoader;)V",
+                        "dev/lich/transform/CompatTransformerTest$Filters", "dropNulls")
+                .build();
+        ClassWriter writer = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+        writer.visit(Opcodes.V1_8, Opcodes.ACC_PUBLIC, "test/MyLoader", null, "java/net/URLClassLoader", null);
+        MethodVisitor mv = writer.visitMethod(Opcodes.ACC_PUBLIC, "<init>", "()V", null, null);
+        mv.visitCode();
+        // super(new URL[]{null}, null), which Java 9+ rejects.
+        mv.visitVarInsn(Opcodes.ALOAD, 0);
+        mv.visitInsn(Opcodes.ICONST_1);
+        mv.visitTypeInsn(Opcodes.ANEWARRAY, "java/net/URL");
+        mv.visitInsn(Opcodes.ACONST_NULL);
+        mv.visitMethodInsn(Opcodes.INVOKESPECIAL, "java/net/URLClassLoader", "<init>", "([Ljava/net/URL;Ljava/lang/ClassLoader;)V", false);
+        mv.visitInsn(Opcodes.RETURN);
+        mv.visitMaxs(0, 0);
+        mv.visitEnd();
+        writer.visitEnd();
+
+        byte[] bytes = filtering.transform("test.MyLoader", writer.toByteArray());
+        Class<?> loader = new ClassLoader(getClass().getClassLoader()) {
+            Class<?> define() {
+                return defineClass("test.MyLoader", bytes, 0, bytes.length);
+            }
+        }.define();
+        java.net.URLClassLoader instance = (java.net.URLClassLoader) loader.getDeclaredConstructor().newInstance();
+        assertEquals(0, instance.getURLs().length);
+    }
+
+    /** The filter for the test above; public, since the generated class calls it from another loader. */
+    public static final class Filters {
+        public static java.net.URL[] dropNulls(java.net.URL[] urls) {
+            return java.util.Arrays.stream(urls).filter(java.util.Objects::nonNull).toArray(java.net.URL[]::new);
+        }
+    }
+
     @Test
     void byteSearch() {
         byte[] haystack = "abcabd".getBytes();

@@ -41,6 +41,10 @@ public final class JdkCompat {
                         REFLECT + "ReflectionShims", "modifiers")
                 .redirect("java/lang/reflect/Field", "set", "(Ljava/lang/Object;Ljava/lang/Object;)V",
                         REFLECT + "ReflectionShims", "modifiers")
+                // Java 9+ rejects null URLs, which Java 8's URLClassLoader kept (UrlClassLoaders).
+                .filterFirstArgument("java/net/URLClassLoader", "<init>", "([Ljava/net/URL;)V", SHIMS + "UrlClassLoaders", "withoutNulls")
+                .filterFirstArgument("java/net/URLClassLoader", "<init>", "([Ljava/net/URL;Ljava/lang/ClassLoader;)V",
+                        SHIMS + "UrlClassLoaders", "withoutNulls")
                 // The game's commons-lang3 doesn't know Java 9+ version strings.
                 .patch(CommonsLangJavaVersion.CLASS, new CommonsLangJavaVersion())
                 // Java 9+ checks that method handles to interface methods say so; ASM 5.0-era tools didn't.

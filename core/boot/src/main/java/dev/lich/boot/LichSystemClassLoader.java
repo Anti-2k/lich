@@ -13,7 +13,11 @@ import java.nio.file.Path;
 import java.security.CodeSigner;
 import java.security.CodeSource;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.BiFunction;
 import java.util.jar.JarEntry;
@@ -28,9 +32,11 @@ import java.util.jar.Manifest;
  * because FML and old mods call {@code URLClassLoader.addURL} on it by reflection (cascading tweakers),
  * as they could on Java 8's application class loader.
  *
- * <p>It also leaves out of the class path the jars Lich replaces: Mojang's LaunchWrapper and ASM older
- * than 9 (Forge's asm-all 5.0.3 can't read Java 9+ class files). It tells Lich's own jars apart, so
- * boot can keep them out of FML's mod discovery.
+ * <p>It also leaves out of the class path the jars Lich replaces: Mojang's LaunchWrapper, ASM older
+ * than 9 (Forge's asm-all 5.0.3 can't read Java 9+ class files) and, when LWJGL 3 and Lich's LWJGL 2 API
+ * on it are both there, the game's LWJGL 2. {@code -Dlich.lwjgl=2} keeps LWJGL 2 and leaves out the other
+ * two instead. It tells Lich's own jars (and the libraries it ships) apart, so boot can keep them out of
+ * FML's mod discovery, and they skip the compat pass, which only old code needs.
  *
  * <p>This class is defined by the JDK's application class loader and uses JDK classes only. Every other
  * class, Lich's boot included, is defined by this loader.
@@ -42,12 +48,14 @@ public final class LichSystemClassLoader extends URLClassLoader {
 
     private static final List<String> DROPPED = new CopyOnWriteArrayList<>();
     private static final List<URL> LICH_JARS = new CopyOnWriteArrayList<>();
+    private static final Set<String> LICH_LOCATIONS = ConcurrentHashMap.newKeySet();
     private static volatile BiFunction<String, byte[], byte[]> transformer;
 
     /** Called by the JDK with the application class loader, which this loader replaces. */
     public LichSystemClassLoader(ClassLoader applicationClassLoader) {
-        super("lich-system", classPath(System.getProperty("java.class.path", ""), DROPPED, LICH_JARS),
-                ClassLoader.getPlatformClassLoader());
+        super("lich-system", classPath(System.getProperty("java.class.path", ""), System.getProperty("lich.lwjgl"),
+                DROPPED, LICH_JARS), ClassLoader.getPlatformClassLoader());
+        LICH_JARS.forEach(url -> LICH_LOCATIONS.add(url.toExternalForm()));
     }
 
     /**
@@ -63,7 +71,7 @@ public final class LichSystemClassLoader extends URLClassLoader {
         return List.copyOf(DROPPED);
     }
 
-    /** Lich's own jars and ASM 9, which boot hides from mod discovery. */
+    /** Lich's own jars and the libraries it ships (ASM 9, Nashorn, LWJGL 3), which boot hides from mod discovery. */
     public static List<URL> lichJars() {
         return List.copyOf(LICH_JARS);
     }
@@ -104,7 +112,7 @@ public final class LichSystemClassLoader extends URLClassLoader {
             definePackageFor(name, manifest, location);
 
             BiFunction<String, byte[], byte[]> compat = transformer;
-            if (compat != null && !skipsCompat(name)) {
+            if (compat != null && !skipsCompat(name) && !LICH_LOCATIONS.contains(location.toExternalForm())) {
                 bytes = compat.apply(name, bytes);
             }
             return defineClass(name, bytes, 0, bytes.length, new CodeSource(location, signers));
@@ -153,16 +161,25 @@ public final class LichSystemClassLoader extends URLClassLoader {
 
     /**
      * {@code classPath} as URLs, without the jars Lich replaces (added to {@code dropped}); Lich's own
-     * jars are also added to {@code lich}.
+     * jars are also added to {@code lich}. {@code lwjgl} is {@code -Dlich.lwjgl}: "2" keeps LWJGL 2.
      */
-    static URL[] classPath(String classPath, List<String> dropped, List<URL> lich) {
-        List<URL> urls = new ArrayList<>();
+    static URL[] classPath(String classPath, String lwjgl, List<String> dropped, List<URL> lich) {
+        Map<String, Kind> kinds = new LinkedHashMap<>();
         for (String entry : classPath.split(java.io.File.pathSeparator)) {
-            if (entry.isEmpty()) {
-                continue;
+            if (!entry.isEmpty()) {
+                kinds.putIfAbsent(entry, classify(Path.of(entry).toAbsolutePath()));
             }
+        }
+        boolean lwjgl3 = !"2".equals(lwjgl) && kinds.containsValue(Kind.LWJGL3) && kinds.containsValue(Kind.LWJGL2_API);
+        List<URL> urls = new ArrayList<>();
+        for (Map.Entry<String, Kind> classified : kinds.entrySet()) {
+            String entry = classified.getKey();
             Path path = Path.of(entry).toAbsolutePath();
-            Kind kind = classify(path);
+            Kind kind = switch (classified.getValue()) {
+                case LWJGL2 -> lwjgl3 ? Kind.REPLACED : Kind.OTHER;
+                case LWJGL3, LWJGL2_API -> lwjgl3 ? Kind.LICH : Kind.REPLACED;
+                default -> classified.getValue();
+            };
             if (kind == Kind.REPLACED) {
                 dropped.add(entry);
                 continue;
@@ -186,7 +203,13 @@ public final class LichSystemClassLoader extends URLClassLoader {
         /** Mojang's LaunchWrapper or an ASM older than 9: Lich ships its own, so it's left out. */
         REPLACED,
         /** One of Lich's jars (by its manifest title), or a library Lich ships: ASM 9, Nashorn. */
-        LICH
+        LICH,
+        /** The game's LWJGL 2: replaced when the game runs on LWJGL 3. */
+        LWJGL2,
+        /** A jar of LWJGL 3, classes or natives. With {@link #LWJGL2_API}, it replaces LWJGL 2; without, it's left out. */
+        LWJGL3,
+        /** Lich's LWJGL 2 API on LWJGL 3 (compat-lwjgl2). */
+        LWJGL2_API
     }
 
     static Kind classify(Path path) {
@@ -203,12 +226,24 @@ public final class LichSystemClassLoader extends URLClassLoader {
                 return Kind.LICH;
             }
             Manifest manifest = jar.getManifest();
+            if (jar.getEntry("org/lwjgl/Sys.class") != null && jar.getEntry("org/lwjgl/system/Library.class") == null
+                    && jar.getEntry("dev/lich/compat/lwjgl2/Lwjgl2Compat.class") == null) {
+                return Kind.LWJGL2;
+            }
             if (manifest == null) {
                 return Kind.OTHER;
             }
             String title = manifest.getMainAttributes().getValue("Implementation-Title");
+            if ("lich-compat-lwjgl2".equals(title)) {
+                return Kind.LWJGL2_API;
+            }
             if (title != null && title.startsWith("lich-")) {
                 return Kind.LICH;
+            }
+            String specification = manifest.getMainAttributes().getValue("Specification-Version");
+            if ("lwjgl.org".equals(manifest.getMainAttributes().getValue("Specification-Vendor"))
+                    && specification != null && specification.startsWith("3.")) {
+                return Kind.LWJGL3;
             }
             String name = manifest.getMainAttributes().getValue("Bundle-SymbolicName");
             String version = manifest.getMainAttributes().getValue("Bundle-Version");

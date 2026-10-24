@@ -2,10 +2,12 @@ package dev.lich.boot;
 
 import dev.lich.compat.asm.AsmCompat;
 import dev.lich.compat.jdk.JdkCompat;
+import dev.lich.compat.lwjgl2.Lwjgl2Compat;
 import dev.lich.compat.v1_7_10.Minecraft1710;
 import dev.lich.compat.v1_8_9.Minecraft189;
 import dev.lich.launchwrapper.LaunchCore;
 import dev.lich.launchwrapper.LaunchHooks;
+import dev.lich.launchwrapper.LichExclusions;
 import dev.lich.launchwrapper.LichSources;
 import dev.lich.launchwrapper.LichTransformers;
 import dev.lich.transform.CompatTransformer;
@@ -16,6 +18,7 @@ import org.apache.logging.log4j.Logger;
 
 import java.util.List;
 import java.util.Locale;
+import java.util.function.BiFunction;
 import java.util.stream.Stream;
 
 /**
@@ -96,10 +99,21 @@ public final class Main {
         // Lich's own classes never need it, and the shims call the very methods it redirects to them.
         LichTransformers.addFirst((name, transformedName, bytes) ->
                 transformedName.startsWith("dev.lich.") ? bytes : compat.transform(transformedName, bytes));
+
+        // LWJGL 2 calls onto LWJGL 3, last, so mods' transformers and Mixins still see (and target) the
+        // original calls. The system class loader also runs it on what it defines (lwjgl_util, the sound
+        // libraries, LaunchWrapper's exclusions).
+        CompatTransformer lwjgl = usesLwjgl3()
+                ? Lwjgl2Compat.register(CompatTransformer.builder())
+                        .listener((className, what) -> log.info("LWJGL 3: {} in {}", what, className))
+                        .build()
+                : null;
+        BiFunction<String, byte[], byte[]> systemPass = lwjgl == null ? compat::transform
+                : (name, bytes) -> lwjgl.transform(name, compat.transform(name, bytes));
         if (Relaunch.relauncher() != null) {
-            Relaunch.useCompat(compat::transform);
+            Relaunch.useCompat(systemPass);
         } else if (ClassLoader.getSystemClassLoader() instanceof LichSystemClassLoader) {
-            LichSystemClassLoader.setTransformer(compat::transform);
+            LichSystemClassLoader.setTransformer(systemPass);
         }
 
         // Fixes to the game itself, after FML has patched and deobfuscated it (so, only with Forge for
@@ -117,6 +131,20 @@ public final class Main {
             LichTransformers.addLast((name, transformedName, bytes) ->
                     transformedName.startsWith("dev.lich.") ? bytes : game.transform(transformedName, bytes));
         }
+        if (lwjgl != null) {
+            LichTransformers.addLast((name, transformedName, bytes) ->
+                    transformedName.startsWith("dev.lich.") ? bytes : lwjgl.transform(transformedName, bytes));
+        }
+    }
+
+    /**
+     * Whether the game runs on LWJGL 3: the system class loader left LWJGL 3 and Lich's LWJGL 2 API on the class
+     * path (and LWJGL 2 out), or the other way round. Asked of the class path, so it holds in a relaunch too.
+     */
+    private static boolean usesLwjgl3() {
+        ClassLoader loader = Main.class.getClassLoader();
+        return loader.getResource("org/lwjgl/glfw/GLFW.class") != null
+                && loader.getResource("dev/lich/compat/lwjgl2/Lwjgl2Compat.class") != null;
     }
 
     /**
@@ -146,6 +174,10 @@ public final class Main {
             // Nashorn, for scripting mods: one copy, untouched by mod transformers. Scripts still see game
             // classes, since its engines load them through the context class loader (LaunchClassLoader).
             classLoader.addClassLoaderExclusion("org.openjdk.nashorn.");
+            // LWJGL 3 and Lich's LWJGL 2 API on it: one copy, whatever mods do to LaunchWrapper's own exclusion.
+            if (usesLwjgl3()) {
+                LichExclusions.add("org.lwjgl.");
+            }
             ClassLoader relauncher = Relaunch.relauncher();
             (relauncher == null ? LichSystemClassLoader.lichJars() : Relaunch.lichJars(relauncher)).forEach(LichSources::hide);
         }

@@ -14,9 +14,9 @@ application {
     mainClass = "dev.lich.installer.ProfileInstaller"
 }
 
-// The jars a Lich profile puts on the game's class path: Lich's modules, ASM 9 and Nashorn, without other
-// dependencies, because the game's own libraries (log4j, jopt-simple, ...) come from the version the
-// profile inherits from.
+// The jars a Lich profile puts on the game's class path: Lich's modules, ASM 9, Nashorn and LWJGL 3 with its
+// natives, without other dependencies, because the game's own libraries (log4j, jopt-simple, ...) come from
+// the version the profile inherits from.
 val lich = configurations.dependencyScope("lich")
 val lichRuntime = configurations.resolvable("lichRuntime") {
     extendsFrom(lich.get())
@@ -44,6 +44,16 @@ dependencies {
     add("lich", libs.asm.util)
     // For scripting mods (jdk.nashorn → org.openjdk.nashorn); it runs on the ASM 9 above.
     add("lich", libs.nashorn.core)
+    // LWJGL 3 replaces the game's LWJGL 2 (compat-lwjgl2 has LWJGL 2's API on it). Every platform's natives go
+    // on the class path, where LWJGL 3 finds its own; the system class loader drops LWJGL 2 (PLAN.md §2.5).
+    add("lich", project(":compat-lwjgl2"))
+    for (module in listOf(libs.lwjgl3.asProvider(), libs.lwjgl3.glfw, libs.lwjgl3.opengl, libs.lwjgl3.openal,
+            libs.lwjgl3.stb, libs.lwjgl3.tinyfd, libs.lwjgl3.tinyexr, libs.lwjgl3.nanovg)) {
+        add("lich", module)
+        for (platform in listOf("windows", "windows-arm64", "windows-x86", "linux", "linux-arm64", "macos", "macos-arm64")) {
+            add("lich", variantOf(module) { classifier("natives-$platform") })
+        }
+    }
 }
 
 /** Runs ProfileInstaller with the Lich jars, the JVM flags and [target] (--root or --prism-instance). */
@@ -52,11 +62,15 @@ fun JavaExec.runInstaller(target: Provider<List<String>>) {
     val flags = rootProject.layout.projectDirectory.file("core/boot/src/main/resources/dev/lich/boot/jvm-flags.txt").asFile
     val jars: FileCollection = lichRuntime.get()
     val version = project.version.toString()
-    // group:artifact:version=jar for each library; Lich's own modules are dev.lich:lich-<name>.
+    // group:artifact:version[:classifier]=jar for each library; Lich's own modules are dev.lich:lich-<name>.
     val libraries = lichRuntime.get().incoming.artifacts.resolvedArtifacts.map { artifacts ->
         artifacts.map { artifact ->
             val coordinates = when (val id = artifact.id.componentIdentifier) {
-                is ModuleComponentIdentifier -> "${id.group}:${id.module}:${id.version}"
+                is ModuleComponentIdentifier -> {
+                    // The classifier (LWJGL's natives-<platform>) is only in the file name.
+                    val classifier = artifact.file.name.removeSuffix(".jar").removePrefix("${id.module}-${id.version}").removePrefix("-")
+                    "${id.group}:${id.module}:${id.version}" + if (classifier.isEmpty()) "" else ":$classifier"
+                }
                 is ProjectComponentIdentifier -> "dev.lich:lich-${id.projectName}:$version"
                 else -> throw GradleException("Unexpected Lich library $id")
             }

@@ -21,6 +21,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.ServiceLoader;
 import java.util.Set;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.jar.Manifest;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -112,6 +113,38 @@ class LaunchClassLoaderTest {
         loader.loadClass("fixture.Ordered");
         assertEquals(List.of("first", "registered", "last"), RecordingTransformer.SEEN);
         assertEquals(1, loader.getTransformers().size(), "Lich's transformers are not in the registered list");
+    }
+
+    @Test
+    void lichTransformersAlsoRunOnTransformerExcludedClasses() throws Exception {
+        List<String> seen = new CopyOnWriteArrayList<>();
+        LichTransformers.addFirst((name, transformedName, bytes) -> record(seen, "first", name, bytes));
+        LichTransformers.addLast((name, transformedName, bytes) -> record(seen, "last", name, bytes));
+        LaunchClassLoader loader = newLoader();
+        loader.addTransformerExclusion("fixture.UsesSql");
+        loader.registerTransformer(SUPPORT + "ReplaceStringTransformer");
+        loader.loadClass("fixture.UsesSql");
+        assertEquals(List.of("first", "last"), seen);
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void lichExclusionsSurviveModsEditingTheExclusionSet() throws Exception {
+        LaunchClassLoader loader = newLoader();
+        loader.addClassLoaderExclusion("fixture.");
+        LichExclusions.add("fixture.Excluded");
+        Field field = LaunchClassLoader.class.getDeclaredField("classLoaderExceptions");
+        field.setAccessible(true);
+        ((Set<String>) field.get(loader)).remove("fixture.");
+        assertThrows(ClassNotFoundException.class, () -> loader.findClass("fixture.Excluded"),
+                "left to the parent, which doesn't have the fixtures");
+    }
+
+    private static byte[] record(List<String> seen, String label, String name, byte[] bytes) {
+        if (name.equals("fixture.UsesSql")) {
+            seen.add(label);
+        }
+        return bytes;
     }
 
     @Test

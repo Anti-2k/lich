@@ -39,6 +39,13 @@ class ProfileInstallerTest {
     }
 
     @Test
+    void mavenPathsKeepTheClassifier() {
+        assertEquals("org/lwjgl/lwjgl/3.3.6/lwjgl-3.3.6.jar", ProfileInstaller.mavenPath("org.lwjgl:lwjgl:3.3.6"));
+        assertEquals("org/lwjgl/lwjgl-glfw/3.3.6/lwjgl-glfw-3.3.6-natives-windows.jar",
+                ProfileInstaller.mavenPath("org.lwjgl:lwjgl-glfw:3.3.6:natives-windows"));
+    }
+
+    @Test
     void flagFilesSkipCommentsAndBlankLines(@TempDir Path dir) throws Exception {
         Path flags = Files.writeString(dir.resolve("jvm-flags.txt"), "# comment\n\n  --a=b  \n--c=d\n");
         assertEquals(List.of("--a=b", "--c=d"), ProfileInstaller.readFlags(flags));
