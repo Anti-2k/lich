@@ -4,10 +4,14 @@ import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.Handle;
 import org.objectweb.asm.Opcodes;
+import org.objectweb.asm.Type;
 import org.objectweb.asm.commons.ClassRemapper;
 import org.objectweb.asm.commons.Remapper;
 import org.objectweb.asm.tree.AbstractInsnNode;
 import org.objectweb.asm.tree.ClassNode;
+import org.objectweb.asm.tree.FrameNode;
+import org.objectweb.asm.tree.InsnList;
+import org.objectweb.asm.tree.InsnNode;
 import org.objectweb.asm.tree.InvokeDynamicInsnNode;
 import org.objectweb.asm.tree.LdcInsnNode;
 import org.objectweb.asm.tree.MethodInsnNode;
@@ -15,7 +19,9 @@ import org.objectweb.asm.tree.MethodNode;
 import org.objectweb.asm.tree.TypeInsnNode;
 
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -39,6 +45,10 @@ import java.util.function.Predicate;
  *   <li>replaces instantiations of a library class with instantiations of a Lich subclass,</li>
  *   <li>replaces int constants in classes that use a given library (ASM API levels),</li>
  *   <li>marks method handles to interface methods as such, which tools built on ASM 5.0 left out,</li>
+ *   <li>rewrites calls and constructor calls by {@link CallTable}: hundreds of members of one library
+ *       (LWJGL 2's, onto LWJGL 3),</li>
+ *   <li>passes the first argument of a call (a superclass constructor call included) through a static
+ *       function, for arguments Java 8 accepted and newer JDKs reject,</li>
  *   <li>and applies {@link ClassPatch}es to classes by name.</li>
  * </ul>
  * String renames and redirects can be limited to classes that also contain a marker string, so a
@@ -56,6 +66,60 @@ public final class CompatTransformer {
     }
 
     private record Member(String owner, String name, String descriptor) {
+    }
+
+    /**
+     * Where a call goes: always a static method. A {@code null} descriptor means the call's own, with the
+     * receiver of an instance call as the first parameter.
+     */
+    private record Target(String owner, String name, String descriptor) {
+    }
+
+    /**
+     * Many call rewrites for one library, looked at only in classes that contain {@code gate} (a package
+     * prefix such as {@code org/lwjgl/}): one byte search per class instead of one per rule.
+     */
+    public static final class CallTable {
+        private final byte[] gate;
+        private final Map<Member, Target> calls = new HashMap<>();
+        private final Map<Member, Target> constructors = new HashMap<>();
+
+        public CallTable(String gate) {
+            this.gate = utf8(gate);
+        }
+
+        /**
+         * Calls to {@code owner.name descriptor} call the static {@code target.name} instead, which takes the
+         * receiver of an instance method as its first parameter.
+         */
+        public CallTable redirect(String owner, String name, String descriptor, String target) {
+            calls.put(new Member(owner, name, descriptor), new Target(target, name, null));
+            return this;
+        }
+
+        /**
+         * Calls to the static {@code owner.name descriptor} call the static {@code target.targetName
+         * targetDescriptor} instead, which takes the same arguments (a parameter may be a supertype).
+         */
+        public CallTable move(String owner, String name, String descriptor, String target, String targetName,
+                              String targetDescriptor) {
+            calls.put(new Member(owner, name, descriptor), new Target(target, targetName, targetDescriptor));
+            return this;
+        }
+
+        /**
+         * {@code new owner(...)} with constructor {@code descriptor} calls the static factory {@code
+         * target.factory}, which takes the constructor's arguments and returns an {@code owner}.
+         */
+        public CallTable redirectConstructor(String owner, String descriptor, String target, String factory) {
+            String factoryDescriptor = descriptor.substring(0, descriptor.indexOf(')') + 1) + "L" + owner + ";";
+            constructors.put(new Member(owner, "<init>", descriptor), new Target(target, factory, factoryDescriptor));
+            return this;
+        }
+
+        public int size() {
+            return calls.size() + constructors.size();
+        }
     }
 
     /** A rule's byte check: all of {@code required}, and one of {@code anyOf} unless that's empty. */
@@ -97,7 +161,7 @@ public final class CompatTransformer {
     private final Map<String, Boolean> packageRenameDecisions = new ConcurrentHashMap<>();
 
     /** Applies when one of {@code needles} is found: the owner may still be spelled with a renamed package. */
-    private record Redirect(Member member, String target, List<Needles> needles) {
+    private record Redirect(Member member, Target target, List<Needles> needles) {
         boolean foundIn(byte[] bytes) {
             for (Needles candidate : needles) {
                 if (candidate.foundIn(bytes)) {
@@ -109,6 +173,9 @@ public final class CompatTransformer {
     }
 
     private record RedirectSpec(Member member, String target, List<String> markers) {
+    }
+
+    private record ArgumentFilterSpec(Member member, String filterOwner, String filterName) {
     }
 
     /** {@code ldc from} becomes {@code ldc to} in classes containing one of {@code markers}. */
@@ -148,6 +215,8 @@ public final class CompatTransformer {
     private final List<Rebase> rebases;
     private final List<Rebase> instantiations;
     private final List<IntConstant> intConstants;
+    private final List<CallTable> callTables;
+    private final List<Redirect> argumentFilters;
     private final Predicate<String> interfaces;
     private final Map<String, List<ClassPatch>> patches;
     private final Listener listener;
@@ -164,9 +233,21 @@ public final class CompatTransformer {
             for (String owner : spellings(member.owner())) {
                 needles.add(Needles.of(List.of(owner, member.name()), spec.markers()));
             }
-            redirects.add(new Redirect(member, spec.target(), List.copyOf(needles)));
+            redirects.add(new Redirect(member, new Target(spec.target(), member.name(), null), List.copyOf(needles)));
         }
         this.redirects = List.copyOf(redirects);
+        List<Redirect> argumentFilters = new ArrayList<>();
+        for (ArgumentFilterSpec spec : builder.argumentFilters) {
+            Member member = spec.member();
+            List<Needles> needles = new ArrayList<>();
+            for (String owner : spellings(member.owner())) {
+                needles.add(Needles.of(List.of(owner, member.name()), List.of()));
+            }
+            String argument = Type.getArgumentTypes(member.descriptor())[0].getDescriptor();
+            argumentFilters.add(new Redirect(member, new Target(spec.filterOwner(), spec.filterName(),
+                    "(" + argument + ")" + argument), List.copyOf(needles)));
+        }
+        this.argumentFilters = List.copyOf(argumentFilters);
         List<Rebase> rebases = new ArrayList<>();
         builder.rebases.forEach((from, to) ->
                 rebases.add(new Rebase(from, to, spellings(from).stream().map(CompatTransformer::utf8).toList())));
@@ -183,6 +264,7 @@ public final class CompatTransformer {
                     spellings(spec.marker()).stream().map(CompatTransformer::utf8).toList(), spec.why()));
         }
         this.intConstants = List.copyOf(intConstants);
+        this.callTables = List.copyOf(builder.callTables);
         this.interfaces = builder.interfaces;
         Map<String, List<ClassPatch>> patches = new HashMap<>();
         builder.patches.forEach((name, list) -> patches.put(name, List.copyOf(list)));
@@ -239,10 +321,22 @@ public final class CompatTransformer {
                 strings.put(rename.from(), rename.to());
             }
         }
-        Map<Member, String> calls = new HashMap<>();
+        Map<Member, Target> calls = new HashMap<>();
         for (Redirect redirect : redirects) {
             if (redirect.foundIn(bytes)) {
                 calls.put(redirect.member(), redirect.target());
+            }
+        }
+        Map<Member, Target> filters = new HashMap<>();
+        for (Redirect filter : argumentFilters) {
+            if (filter.foundIn(bytes)) {
+                filters.put(filter.member(), filter.target());
+            }
+        }
+        List<CallTable> tables = new ArrayList<>();
+        for (CallTable table : callTables) {
+            if (indexOf(bytes, table.gate) >= 0) {
+                tables.add(table);
             }
         }
         List<Rebase> rebaseCandidates = new ArrayList<>();
@@ -265,7 +359,8 @@ public final class CompatTransformer {
         }
         boolean handles = interfaces != null && indexOf(bytes, LAMBDA_METAFACTORY) >= 0;
         List<ClassPatch> classPatches = patches.getOrDefault(name, List.of());
-        if (renames.isEmpty() && packages.isEmpty() && strings.isEmpty() && calls.isEmpty()
+        if (renames.isEmpty() && packages.isEmpty() && strings.isEmpty() && calls.isEmpty() && tables.isEmpty()
+                && filters.isEmpty()
                 && rebaseCandidates.isEmpty() && instantiationCandidates.isEmpty() && constantCandidates.isEmpty()
                 && !handles && classPatches.isEmpty()) {
             return bytes;
@@ -289,6 +384,11 @@ public final class CompatTransformer {
         }
         changed |= renameStrings(name, node, strings);
         changed |= redirect(name, node, calls);
+        changed |= filterArguments(name, node, filters);
+        for (CallTable table : tables) {
+            changed |= redirectConstructors(name, node, table.constructors);
+            changed |= redirectCalls(name, node, table.calls);
+        }
         changed |= rebase(name, node, rebaseCandidates);
         changed |= replaceInstantiations(name, node, instantiationCandidates);
         changed |= replaceIntConstants(name, node, constantCandidates);
@@ -324,7 +424,7 @@ public final class CompatTransformer {
         return changed;
     }
 
-    private boolean redirect(String className, ClassNode node, Map<Member, String> calls) {
+    private boolean redirect(String className, ClassNode node, Map<Member, Target> calls) {
         if (calls.isEmpty()) {
             return false;
         }
@@ -334,22 +434,143 @@ public final class CompatTransformer {
                 if (!(insn instanceof MethodInsnNode call) || call.getOpcode() == Opcodes.INVOKESPECIAL) {
                     continue;
                 }
-                String target = calls.get(new Member(call.owner, call.name, call.desc));
+                Target target = calls.get(new Member(call.owner, call.name, call.desc));
                 if (target == null) {
                     continue;
                 }
-                listener.changed(className, "redirected " + call.owner + "." + call.name + " to " + target);
-                if (call.getOpcode() != Opcodes.INVOKESTATIC) {
-                    // The receiver becomes the first argument; the stack stays exactly the same.
-                    call.desc = "(L" + call.owner + ";" + call.desc.substring(1);
+                listener.changed(className, "redirected " + call.owner + "." + call.name + " to " + target.owner());
+                retarget(call, target);
+                changed = true;
+            }
+        }
+        return changed;
+    }
+
+    /** Like {@link #redirect}, but each rewritten member is reported once per namespace. */
+    private boolean redirectCalls(String className, ClassNode node, Map<Member, Target> calls) {
+        boolean changed = false;
+        for (MethodNode method : node.methods) {
+            for (AbstractInsnNode insn = method.instructions.getFirst(); insn != null; insn = insn.getNext()) {
+                if (!(insn instanceof MethodInsnNode call) || call.getOpcode() == Opcodes.INVOKESPECIAL) {
+                    continue;
                 }
+                Target target = calls.get(new Member(call.owner, call.name, call.desc));
+                if (target == null) {
+                    continue;
+                }
+                reportOncePerNamespace(className, "redirected " + call.owner + "." + call.name + call.desc
+                        + " to " + target.owner() + "." + target.name());
+                retarget(call, target);
+                changed = true;
+            }
+        }
+        return changed;
+    }
+
+    /**
+     * Inserts a call to the filter before each matching call, on its first argument: right on top of the
+     * stack for one argument, under the second (one slot) for two. Other shapes are left alone. The stack
+     * never grows, and no branch is added.
+     */
+    private boolean filterArguments(String className, ClassNode node, Map<Member, Target> filters) {
+        if (filters.isEmpty()) {
+            return false;
+        }
+        boolean changed = false;
+        for (MethodNode method : node.methods) {
+            for (AbstractInsnNode insn = method.instructions.getFirst(); insn != null; insn = insn.getNext()) {
+                if (!(insn instanceof MethodInsnNode call)) {
+                    continue;
+                }
+                Target filter = filters.get(new Member(call.owner, call.name, call.desc));
+                Type[] arguments = Type.getArgumentTypes(call.desc);
+                if (filter == null || arguments.length > 2 || (arguments.length == 2 && arguments[1].getSize() != 1)) {
+                    continue;
+                }
+                InsnList before = new InsnList();
+                if (arguments.length == 2) {
+                    before.add(new InsnNode(Opcodes.SWAP));
+                }
+                before.add(new MethodInsnNode(Opcodes.INVOKESTATIC, filter.owner(), filter.name(), filter.descriptor(), false));
+                if (arguments.length == 2) {
+                    before.add(new InsnNode(Opcodes.SWAP));
+                }
+                method.instructions.insertBefore(call, before);
+                reportOncePerNamespace(className, "filtered the first argument of " + call.owner + "." + call.name
+                        + call.desc + " through " + filter.owner() + "." + filter.name());
+                changed = true;
+            }
+        }
+        return changed;
+    }
+
+    /** Points {@code call} at the static {@code target}; the stack stays exactly the same. */
+    private static void retarget(MethodInsnNode call, Target target) {
+        if (target.descriptor() != null) {
+            call.desc = target.descriptor();
+        } else if (call.getOpcode() != Opcodes.INVOKESTATIC) {
+            // The receiver becomes the first argument.
+            call.desc = "(L" + call.owner + ";" + call.desc.substring(1);
+        }
+        call.setOpcode(Opcodes.INVOKESTATIC);
+        call.owner = target.owner();
+        call.name = target.name();
+        call.itf = false;
+    }
+
+    /**
+     * Turns {@code new Owner; dup; <arguments>; invokespecial Owner.<init>} into {@code <arguments>;
+     * invokestatic factory}, which leaves the same object on the stack. Left alone when a stack map frame
+     * lies in between: it would still name the removed {@code new} as an uninitialized type.
+     */
+    private boolean redirectConstructors(String className, ClassNode node, Map<Member, Target> constructors) {
+        if (constructors.isEmpty()) {
+            return false;
+        }
+        boolean changed = false;
+        for (MethodNode method : node.methods) {
+            Deque<TypeInsnNode> pendingNews = new ArrayDeque<>();
+            for (AbstractInsnNode insn = method.instructions.getFirst(); insn != null; insn = insn.getNext()) {
+                if (insn instanceof TypeInsnNode type && type.getOpcode() == Opcodes.NEW) {
+                    pendingNews.push(type);
+                    continue;
+                }
+                if (!(insn instanceof MethodInsnNode call) || call.getOpcode() != Opcodes.INVOKESPECIAL
+                        || !call.name.equals("<init>")) {
+                    continue;
+                }
+                // Otherwise it's a constructor's own super(...) or this(...) call.
+                if (pendingNews.isEmpty() || !pendingNews.peek().desc.equals(call.owner)) {
+                    continue;
+                }
+                TypeInsnNode allocation = pendingNews.pop();
+                Target factory = constructors.get(new Member(call.owner, call.name, call.desc));
+                AbstractInsnNode dup = allocation.getNext();
+                if (factory == null || dup == null || dup.getOpcode() != Opcodes.DUP || hasFrameBetween(dup, call)) {
+                    continue;
+                }
+                method.instructions.remove(allocation);
+                method.instructions.remove(dup);
+                reportOncePerNamespace(className, "redirected new " + call.owner + call.desc
+                        + " to " + factory.owner() + "." + factory.name());
                 call.setOpcode(Opcodes.INVOKESTATIC);
-                call.owner = target;
+                call.owner = factory.owner();
+                call.name = factory.name();
+                call.desc = factory.descriptor();
                 call.itf = false;
                 changed = true;
             }
         }
         return changed;
+    }
+
+    private static boolean hasFrameBetween(AbstractInsnNode from, AbstractInsnNode to) {
+        for (AbstractInsnNode insn = from; insn != to; insn = insn.getNext()) {
+            if (insn instanceof FrameNode) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -562,6 +783,8 @@ public final class CompatTransformer {
         private Predicate<String> interfaces;
         private final Map<String, String> instantiations = new HashMap<>();
         private final List<IntConstantSpec> intConstants = new ArrayList<>();
+        private final List<CallTable> callTables = new ArrayList<>();
+        private final List<ArgumentFilterSpec> argumentFilters = new ArrayList<>();
         private final Map<String, List<ClassPatch>> patches = new HashMap<>();
         private Listener listener = (className, what) -> {
         };
@@ -650,6 +873,23 @@ public final class CompatTransformer {
          */
         public Builder fixInterfaceHandles(Predicate<String> isInterface) {
             this.interfaces = isInterface;
+            return this;
+        }
+
+        /**
+         * Calls to {@code owner.name descriptor} (a constructor too, including a subclass's {@code super(...)})
+         * pass their first argument through the static {@code filterOwner.filterName}, which takes and
+         * returns that argument's type. Only for calls with one argument, or two of which the second is one
+         * stack slot.
+         */
+        public Builder filterFirstArgument(String owner, String name, String descriptor, String filterOwner, String filterName) {
+            argumentFilters.add(new ArgumentFilterSpec(new Member(owner, name, descriptor), filterOwner, filterName));
+            return this;
+        }
+
+        /** Applies the rewrites in {@code table}, in classes that contain its gate. */
+        public Builder calls(CallTable table) {
+            callTables.add(table);
             return this;
         }
 

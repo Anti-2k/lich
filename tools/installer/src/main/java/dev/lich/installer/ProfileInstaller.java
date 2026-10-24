@@ -138,13 +138,21 @@ public final class ProfileInstaller {
                 .toList();
     }
 
-    /** {@code group:artifact:version} → {@code group/as/dirs/artifact/version/artifact-version.jar}. */
+    /**
+     * {@code group:artifact:version[:classifier]} →
+     * {@code group/as/dirs/artifact/version/artifact-version[-classifier].jar}.
+     */
     static String mavenPath(String coordinates) {
         String[] parts = coordinates.split(":");
-        if (parts.length != 3) {
-            throw new IllegalArgumentException("Expected group:artifact:version, got " + coordinates);
+        if (parts.length != 3 && parts.length != 4) {
+            throw new IllegalArgumentException("Expected group:artifact:version[:classifier], got " + coordinates);
         }
-        return parts[0].replace('.', '/') + "/" + parts[1] + "/" + parts[2] + "/" + parts[1] + "-" + parts[2] + ".jar";
+        return parts[0].replace('.', '/') + "/" + parts[1] + "/" + parts[2] + "/" + fileName(parts);
+    }
+
+    /** {@code artifact-version[-classifier].jar}, as Maven and Prism name a library's file. */
+    static String fileName(String[] coordinates) {
+        return coordinates[1] + "-" + coordinates[2] + (coordinates.length == 4 ? "-" + coordinates[3] : "") + ".jar";
     }
 
     private static String sha1(Path file) throws IOException {

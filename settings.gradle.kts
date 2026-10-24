@@ -6,6 +6,10 @@ dependencyResolutionManagement {
     repositoriesMode = RepositoriesMode.FAIL_ON_PROJECT_REPOS
     repositories {
         mavenCentral()
+        // The game's LWJGL 2, which compat-lwjgl2's rename table is generated from.
+        maven("https://libraries.minecraft.net") {
+            content { includeGroup("org.lwjgl.lwjgl") }
+        }
     }
 }
 

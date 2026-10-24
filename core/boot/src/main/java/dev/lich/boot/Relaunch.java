@@ -37,14 +37,17 @@ final class Relaunch {
         return own.getClass().getName().equals(LichSystemClassLoader.class.getName()) ? null : own;
     }
 
-    /** Lich's jars and ASM 9 among the relaunch loader's URLs, to hide them from mod discovery. */
+    /** Lich's jars and the libraries it ships among the relaunch loader's URLs, to hide them from mod discovery. */
     static List<URL> lichJars(ClassLoader relauncher) {
         List<URL> lich = new ArrayList<>();
         if (relauncher instanceof URLClassLoader urls) {
             for (URL url : urls.getURLs()) {
                 try {
-                    if (url.getProtocol().equals("file")
-                            && LichSystemClassLoader.classify(Path.of(url.toURI())) == LichSystemClassLoader.Kind.LICH) {
+                    // The first launch already chose between LWJGL 2 and 3: whichever LWJGL 3 jars are left are in use.
+                    LichSystemClassLoader.Kind kind = url.getProtocol().equals("file")
+                            ? LichSystemClassLoader.classify(Path.of(url.toURI())) : LichSystemClassLoader.Kind.OTHER;
+                    if (kind == LichSystemClassLoader.Kind.LICH || kind == LichSystemClassLoader.Kind.LWJGL3
+                            || kind == LichSystemClassLoader.Kind.LWJGL2_API) {
                         lich.add(url);
                     }
                 } catch (URISyntaxException | RuntimeException notAJar) {
@@ -124,8 +127,12 @@ final class Relaunch {
         };
     }
 
-    /** As {@link LichSystemClassLoader}: Lich's own classes and ASM never need it. */
+    /**
+     * As {@link LichSystemClassLoader}, which tells by the jar: Lich's own classes and ASM never need it, nor do
+     * LWJGL 3 and Lich's LWJGL 2 classes on it, which are all of {@code org.lwjgl} but LWJGL 2's lwjgl_util.
+     */
     private static boolean skipsCompat(String name) {
-        return name.startsWith("org.objectweb.asm.") || name.startsWith("dev.lich.");
+        return name.startsWith("org.objectweb.asm.") || name.startsWith("dev.lich.")
+                || name.startsWith("org.lwjgl.") && !name.startsWith("org.lwjgl.util.");
     }
 }

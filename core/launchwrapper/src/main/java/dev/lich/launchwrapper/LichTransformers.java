@@ -9,8 +9,9 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * Lich's own transformers, which {@code LaunchClassLoader} runs before ({@link #first()}) and after
  * ({@link #last()}) every transformer registered through {@code registerTransformer}. They live outside
  * the registered list, so FML's sorting and mods that remove or reorder transformers can't move them:
- * JDK-compat redirects must see bytes before anyone else, and frame recomputation must see them last.
- * The first ones also run on classes excluded from transformers, which no registered transformer sees.
+ * JDK-compat redirects must see bytes before anyone else, and LWJGL redirects and game fixes must see
+ * them last, after mods' transformers and Mixins have matched the original calls. Both also run on
+ * classes excluded from transformers, which no registered transformer sees.
  */
 public final class LichTransformers {
     private static final List<IClassTransformer> FIRST = new CopyOnWriteArrayList<>();

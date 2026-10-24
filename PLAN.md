@@ -204,7 +204,12 @@ Never redistribute Minecraft or patched Forge binaries. Patch at load time, or o
   `--add-opens` in §4.1: `java.util.regex`, `java.util.concurrent(.atomic)`, `java.time`, `java.text`,
   `java.desktop/java.awt`.
 - **LWJGL 3 assumed on Java 17+**: current GTNH libraries (GTNHLib for Hodgepodge) take Java 17+ to mean
-  GTNH's lwjgl3ify environment and call LWJGL 3 (`org.lwjgl.system.jni`). Comes with Phase 6.
+  GTNH's lwjgl3ify environment and call LWJGL 3 (`org.lwjgl.system.jni`). Fixed by Phase 6: LWJGL 3 is on
+  the class path, and Hodgepodge joins a server (2026-10-25).
+- **`URLClassLoader` with `null` URLs**: Java 8 kept them (and only failed if a lookup reached one), Java
+  9+ throws in the constructor. OneConfig's environment-LWJGL path passes one. The compat pass filters
+  the array of every `URLClassLoader` constructor call, `super(...)` included (`UrlClassLoaders`, a new
+  `filterFirstArgument` rule kind); arrays without `null`s pass unchanged.
 
 ### 2.5 LWJGL
 - **Confirmed (2026-10-24, Windows x64, Temurin 25.0.4):** vanilla 1.8.9 with LWJGL 2.9.4 reaches the
@@ -220,6 +225,55 @@ Never redistribute Minecraft or patched Forge binaries. Patch at load time, or o
   `org.lwjgl.*`, so it **can't be relocated**. Keep LWJGL 3 at `org.lwjgl` and **rewrite consumer
   bytecode** so that LWJGL 2-only classes and methods point at Lich compat classes (`Display`,
   `Keyboard`, `Mouse`, `AL`, `Controllers`, removed `GLxx` overloads).
+- **Done (Phase 6, 2026-10-25): the game runs on LWJGL 3.3.6** (`compat-lwjgl2`). How it's built:
+  - Why 3.3.6 and not 3.4: everything written for LWJGL 3 on these game versions (lwjgl3ify/GTNH,
+    PojavLauncher, OneConfig's NanoVG renderer) is compiled against 3.3.x, and 3.4 changed signatures
+    (`nvgCreateFontMem`'s `int freeData` became `boolean`), so they'd fail with `NoSuchMethodError`.
+  - Classes LWJGL 3 doesn't have (`Display`, `Keyboard`, `Mouse`, `Cursor`, `Controllers`, `Sys`,
+    `LWJGLUtil`, `GLContext`/`ContextCapabilities`, `SharedDrawable`, `Pbuffer`, `ALCdevice`, ...) are in
+    `compat-lwjgl2` under their LWJGL 2 names, on GLFW. Mixins and coremods that target them still match.
+    Their logic lives in `dev.lich.compat.lwjgl2.display` (one copy, class-loader-excluded).
+  - Members LWJGL 3 dropped or changed from classes both have go through one `CallTable` in the compat
+    pass, run as Lich's *last* transformer (after mods' transformers and Mixins have matched the original
+    calls) and in the system class loader (lwjgl_util, paulscode, LaunchWrapper's exclusions). 734 are
+    renames generated from both jars (`renames.txt`: `glGetFloat(int, FloatBuffer)` → `glGetFloatv`,
+    `EFX10` → `EXTEfx`); the rest are hand-written static mirrors (`Lwjgl2GL11`, `Lwjgl2AL`, ...:
+    typeless pointer functions, `ByteBuffer` shader sources, `GLSync`, debug callbacks, `PointerBuffer`).
+    `ContextCapabilities` is generated from LWJGL 2's fields, filled from LWJGL 3's `GLCapabilities` or
+    the extension string.
+  - `:compat-lwjgl2:checkLinkage` lists every LWJGL reference in the game, Forge and the mod corpus that
+    still wouldn't link after the table: the to-do list, and the regression check. Left on 2026-10-25:
+    only lwjgl_util internals nothing calls (jinput, mapped objects) and optional LWJGL 3 modules that
+    Essential and ReplayMod probe for (Lich ships stb, tinyfd, tinyexr and nanovg, so they resolve).
+  - The system class loader picks the LWJGL: when LWJGL 3 and `compat-lwjgl2` are both on the class path
+    it drops LWJGL 2's jar (lwjgl_util stays: it's plain Java on top). `-Dlich.lwjgl=2` keeps LWJGL 2 and
+    drops the other two instead, for comparisons. LWJGL 3's jars count as Lich's (hidden from FML, no compat
+    pass). The installer ships LWJGL 3 with every platform's natives jar on the class path; LWJGL 3
+    extracts the right one itself, so launchers' native extraction (LWJGL 2's) doesn't matter.
+  - Behavior kept from LWJGL 2, where the game can tell: a key press and the character it typed are one
+    event (GLFW sends two callbacks); repeats are queued and skipped unless enabled; printable keys get
+    the code of what the layout prints on Windows/Linux (`KEY_Z` for German Z), positional on macOS;
+    coordinates are framebuffer pixels from the bottom left; the wheel counts 120 per notch; grabbing
+    keeps OS mouse acceleration (no raw input); `Display.create` creates Mouse and Keyboard; window
+    messages are processed only on the main thread (Forge's splash thread swaps but doesn't poll);
+    `Display.sync` sleeps then yields like LWJGL 2's; `Sys.getTime()` is milliseconds from `nanoTime`
+    (the tick timer compares it with `nanoTime`, so its sync adjustment stays at 1: not server-visible).
+  - `Sys.getVersion()` returns LWJGL 3's version, so logs and crash reports say what really ran.
+  - LWJGL 3 aborts the JVM on a GL call from a thread with no context, where LWJGL 2 threw. The game's
+    crash report asks for `glGetString` regardless, so that one is mirrored to throw like LWJGL 2 (it's
+    never called per frame); otherwise an early crash ends without a report.
+  - **Mods that bring their own LWJGL 3** (OneConfig, for NanoVG, isolated in its own class loader): two
+    LWJGL 3 copies in one JVM overwrite each other's per-thread GL function table (kept in the JNIEnv),
+    and the game's next GL call aborts. OneConfig skips its copy when it finds PojavLauncher's LWJGL 3,
+    detected by `org.lwjgl.glfw.CallbackBridge`; the call table renames that string to `GLFW` in classes
+    that also name `org.lwjgl.system` (only OneConfig in the corpus checks it). Lich ships NanoVG for it,
+    and mirrors the one NanoVG function whose signature changed since the LWJGL 3.3.1 OneConfig was built
+    against (`Lwjgl331NanoVG`). OneConfig also removes LaunchWrapper's `org.lwjgl.` exclusion, so boot puts
+    it in `LichExclusions` (§4.2).
+  - **Tested (Windows x64):** vanilla 1.8.9 to the main menu; Forge 1.7.10 and 1.8.9 through the
+    loading screen into a local server; typing in chat (shift, punctuation, backspace), turning the
+    camera, clicking menus, F11 fullscreen and back; the mod corpus (§7). **(verify)** Linux X11/Wayland,
+    macOS (Apple Silicon): GLFW runs there as `glfw_async` unless the JVM has `-XstartOnFirstThread`.
 
 ---
 
@@ -244,7 +298,8 @@ Lich LaunchWrapper (own impl, API-compatible net.minecraft.launchwrapper.*)
    │    3. Forge/FML transformers + Forge coremods          (forge profile only)
    │    4. Mixin (Lich API hooks that loaded Lich mods use + Lich mods + Forge mods' mixins)
    │    5. Lich mod raw transformers (advanced, opt-in)
-   │    6. Lich last: Java 25 game fixes on SRG names (now ClassPatches, later Mixins), frame recomputation
+   │    6. Lich last: Java 25 game fixes on SRG names (now ClassPatches, later Mixins), the LWJGL 2 → 3
+   │       call table (§2.5), frame recomputation
    ▼
 Lich mod loader ───────────────┬──── FML (forge profile) loads Forge mods as usual
    preLaunch → init → client   │     Lich jars are hidden from FML discovery
@@ -269,7 +324,7 @@ SRG data downloaded at install time (not bundled). Because of this:
 | `remap` | obf → SRG runtime remapper for the vanilla profile |
 | `compat-jdk` | Shims for removed JDK APIs and their redirect table: Pack200 (nested commons-compress), SecurityManager, reflection compat |
 | `compat-asm` | ASM 5 classes ASM 9 removed (verbatim), redirects for ASM 5 behavior |
-| `compat-lwjgl2` | LWJGL 2 API on LWJGL 3.3.x (Phase 6) |
+| `compat-lwjgl2` | LWJGL 2 API on LWJGL 3.3.x (§2.5), its call table and the linkage check |
 | `compat-forge-<ver>` | Version-specific FML/Forge patches |
 | `compat-mc-<ver>` | Fixes to the game (Mixins from Phase 4, ClassPatches on SRG names until then); fixes identical in both versions live in `shared-compat-mc` |
 | `loader` | Lich mod discovery, descriptor parsing, dependency resolution, entrypoints, FML-hiding |
@@ -323,9 +378,11 @@ message if a flag is missing.
   from `java.class.path` otherwise. Never a cast of the JDK's application loader to `URLClassLoader`.
 - Parent = platform class loader. Keep the original exclusion lists; boot adds Lich's packages and
   `org.objectweb.asm.` (§2.4).
-- Differences from 1.12, all in Lich's favor and covered by tests: Lich's first transformers (the
-  compat pass) also run on transformer-excluded classes, and `getSources()` leaves out the jars in
-  `LichSources` (Lich's own and ASM 9), so FML's mod discovery never scans them.
+- Differences from 1.12, all in Lich's favor and covered by tests: Lich's first and last transformers
+  also run on transformer-excluded classes; `getSources()` leaves out the jars in `LichSources` (Lich's
+  own, ASM 9, LWJGL 3), so FML's mod discovery never scans them; and prefixes in `LichExclusions` always
+  go to the parent, kept outside `classLoaderExceptions` so mods can't remove them (§2.5: OneConfig removes
+  `org.lwjgl.`, which on LWJGL 3 would load a second LWJGL).
 - Tweaker chain, `--tweakClass` handling and blackboard keys (`Tweaks`, `TweakClasses`,
   `ArgumentList`, `fml.deobfuscatedEnvironment`) behave exactly like LaunchWrapper 1.12. Write tests
   that compare against the real LaunchWrapper running on Java 8.
@@ -388,7 +445,8 @@ Three commons-compress behaviors needed working around (`Pack200Test` covers the
   `MMC-hint: local`, and `+jvmArgs`) plus an `mmc-pack.json` entry after every other component, so
   Lich's main class wins over Forge's (`net.minecraft.launchwrapper.Launch`). **Works in Prism 11.0.2** (2026-10-24, both versions): `installer`'s `PrismComponent`, run with
   `:installer:installPrism`. The instance also needs `IgnoreJavaCompatibility=true` and
-  `AutomaticJava=false`, or Prism falls back to Java 8. Phase 6 adds replacing the LWJGL 2 component.
+  `AutomaticJava=false`, or Prism falls back to Java 8. The instance keeps its LWJGL 2 component: Lich's
+  component brings LWJGL 3 and its natives, and Lich's system class loader leaves LWJGL 2 out (§2.5).
 - No custom launcher.
 
 ---
@@ -536,7 +594,8 @@ differ by 1 ulp between JDKs **(verify)**.
   lich-mods} × {Java 8 baseline, Java 25}, plus the determinism replay and anticheat jobs.
 - **Mod corpus** (2026-10-24, from Modrinth, newest Forge build of each, dependencies in the same folder,
   each run alone through devlaunch's `lich-forge` profile, joining the local test server for 25 s, game
-  muted). Every entry passes but Hodgepodge (LWJGL 3):
+  muted). Every entry passes on LWJGL 2; on LWJGL 3 (Phase 6, 2026-10-25) every entry passes, Hodgepodge
+  included:
   - 1.8.9 (22): 2k client + OptiFine, 3D Skin Layers, Biomes O' Plenty, Blood Magic, Chatting, Controlling,
     CraftTweaker, EntityCulling, Essential, FoamFix, In-Game Account Switcher, JEI, NotEnoughUpdates,
     PolyPatcher, Replay Mod, SecurityCraft, SkyblockAddons, SkyHanni, Storage Drawers, Wavey Capes,
@@ -566,9 +625,9 @@ differ by 1 ulp between JDKs **(verify)**.
 | 1. Vanilla 1.8.9 on 25 🟡 | `boot` + `launchwrapper` + flags + log4j safety + profile generator. The SRV fix came free with the class loader parent. The Twitch null stream moved to the perf mod (Phase 8): on 25 it only loads a few unused DLLs | **So far (2026-10-24):** main menu and joining a local server on Java 25 with zero JVM warnings. Prism test instances `lich-1.8.9`/`lich-1.7.10` start Lich on Java 25. **Left:** a singleplayer world and a public server with a real account in `lich-1.8.9` (§4.6) |
 | 2. Vanilla 1.7.10 on 25 ✅ | Same for 1.7.10. No 1.7.10-specific code was needed | **Done 2026-10-24:** in Prism with the user's account, a singleplayer world and a public server (as.minemen.club, about 40 s, chat working), Java 25 |
 | 3. Forge, no mods 🟡 | Runtime binpatching through a Pack200 shim (§4.5), ASM 9 + ASM 5 shims, SecurityManager strip, reflection compat for ObjectHolderRef/EnumHelper (§4.4), Lich's system class loader, hiding Lich's jars from FML, the SoundManager race fix (§2.4) | **So far (2026-10-24):** Forge 1.7.10 and 1.8.9 load ("successfully loaded 3 mods") and reach the main menu on Java 25 through devlaunch, with zero JVM warnings; their logs match the Java 8 Forge baseline apart from Lich's own lines. In Prism, `lich-forge-1.8.9` with the user's account ran a singleplayer world (create, play, save, quit) cleanly. **Left:** the mod list screen, a public server on Forge 1.8.9, and `lich-forge-1.7.10` on the user's account |
-| 4. Forge mods 🟡 | Mixin provider, redirect table, reflection compat, JDK shims, harness + corpus | Agreed % of the corpus loads; failures name the mod and the API. **So far (2026-10-24):** a 47-entry corpus (§7) joins a local server and stays in the world through Lich on Java 25, all but one (Hodgepodge: needs LWJGL 3, Phase 6). OptiFine + 2k client on both versions apply exactly the mixins they do on Java 8. **Left:** a singleplayer-world harness (worldgen and content mods were only tested client-side), the mod list screen, more mods per genre, Java 8 baselines for every corpus mod, the Mixin provider for Lich mods (Phase 5) |
+| 4. Forge mods 🟡 | Mixin provider, redirect table, reflection compat, JDK shims, harness + corpus | Agreed % of the corpus loads; failures name the mod and the API. **So far (2026-10-24):** a 47-entry corpus (§7) joins a local server and stays in the world through Lich on Java 25, all but one (Hodgepodge: needs LWJGL 3; passes since Phase 6). OptiFine + 2k client on both versions apply exactly the mixins they do on Java 8. **Left:** a singleplayer-world harness (worldgen and content mods were only tested client-side), the mod list screen, more mods per genre, Java 8 baselines for every corpus mod, the Mixin provider for Lich mods (Phase 5) |
 | 5. Lich mods v0 | `remap` (vanilla-profile SRG), `loader`, `lich.mod.json`, `api` v0 (lifecycle, events, HUD, keybinds, config; hooks woven on demand, §5.2), FML-hiding, dual jars | 2k client runs as a Lich mod on both versions, with and without Forge; with no Lich mods installed, every game class is byte-identical to what Lich defines without `loader`/`api` (a harness check) |
-| 6. LWJGL 3 | `compat-lwjgl2` + redirects; Prism LWJGL override | Windows/Linux/macOS ARM native; mods calling GL11/Display/Keyboard work |
+| 6. LWJGL 3 🟡 | `compat-lwjgl2` + redirects; Prism LWJGL override | Windows/Linux/macOS ARM native; mods calling GL11/Display/Keyboard work. **So far (2026-10-25, Windows x64):** the game runs on LWJGL 3.3.6 in every Lich profile (§2.5): vanilla 1.8.9, Forge 1.7.10 and 1.8.9 through devlaunch and Prism (`lich-forge-1.8.9`, offline); input, menus, fullscreen checked by hand; all 47 corpus entries join a server (§7), Hodgepodge and the OneConfig mods included; `checkLinkage` is clean. **Left:** Linux (X11, Wayland) and macOS Apple Silicon, a public server and singleplayer with the user's account, controllers (untested), the 1.7.10 Prism instance |
 | 7. Server safety gate | Determinism replay + anticheat CI jobs; Mixin deny-list enforcement | Zero packet diffs vs Java 8 vanilla; zero anticheat flags |
 | 8. Optimisations | The `perf` mod (§5.3), plus the replaceable-subsystem hooks it needs (§5.2, level 4); each optimisation benchmarked and server-safe | Measured FPS/stutter/memory gains vs Java 8, with `perf` using no private Lich internals |
 | 9. Ship | Installer UX, Prism pack, docs, compat list, mod-dev docs + template | Users install without reading source; a third party can write a Lich mod |

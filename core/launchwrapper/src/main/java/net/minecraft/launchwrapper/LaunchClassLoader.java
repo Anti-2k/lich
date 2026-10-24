@@ -1,5 +1,6 @@
 package net.minecraft.launchwrapper;
 
+import dev.lich.launchwrapper.LichExclusions;
 import dev.lich.launchwrapper.LichSources;
 import dev.lich.launchwrapper.LichTransformers;
 import org.apache.logging.log4j.Level;
@@ -47,9 +48,11 @@ import java.util.jar.Manifest;
  *       another thread loads classes can't throw {@code ConcurrentModificationException}.</li>
  *   <li>Lich's own transformers ({@link LichTransformers}) run before and after the registered ones.
  *       They're kept out of {@link #getTransformers()}, so mods that reorder or remove transformers
- *       can't disturb them. The first ones (the compat pass) also run on transformer-excluded classes.</li>
+ *       can't disturb them. Both also run on transformer-excluded classes.</li>
  *   <li>{@link #getSources()} leaves out the jars in {@link LichSources}, so FML's mod discovery
  *       doesn't scan Lich's own jars.</li>
+ *   <li>Classes matching {@link LichExclusions} always come from the parent, even when a mod removes the
+ *       same prefix from {@code classLoaderExceptions}.</li>
  * </ul>
  */
 public class LaunchClassLoader extends URLClassLoader {
@@ -144,6 +147,9 @@ public class LaunchClassLoader extends URLClassLoader {
                 return parent.loadClass(name);
             }
         }
+        if (LichExclusions.matches(name)) {
+            return parent.loadClass(name);
+        }
 
         final Class<?> cached = cachedClasses.get(name);
         if (cached != null) {
@@ -236,12 +242,12 @@ public class LaunchClassLoader extends URLClassLoader {
 
     /**
      * A class that's excluded from transformers. 1.12 defines it untouched with {@code URLClassLoader}'s
-     * {@code findClass}, and so does Lich unless its first transformers (the compat pass) change it:
-     * FML keeps its own patcher and deobfuscation classes out of transformers, and those call removed
-     * JDK APIs too. A changed class gets the code source {@code URLClassLoader} would have given it.
+     * {@code findClass}, and so does Lich unless its own first or last transformers change it: FML keeps
+     * its own patcher and deobfuscation classes out of transformers, and those call removed JDK APIs and
+     * LWJGL 2 too. A changed class gets the code source {@code URLClassLoader} would have given it.
      */
     private Class<?> findExcludedClass(final String name) throws ClassNotFoundException {
-        if (LichTransformers.first().isEmpty()) {
+        if (LichTransformers.first().isEmpty() && LichTransformers.last().isEmpty()) {
             return super.findClass(name);
         }
         final byte[] bytes;
@@ -250,7 +256,8 @@ public class LaunchClassLoader extends URLClassLoader {
         } catch (IOException e) {
             throw new ClassNotFoundException(name, e);
         }
-        final byte[] compat = bytes == null ? null : runAll(LichTransformers.first(), name, name, bytes);
+        final byte[] compat = bytes == null ? null
+                : runAll(LichTransformers.last(), name, name, runAll(LichTransformers.first(), name, name, bytes));
         if (compat == bytes) {
             return super.findClass(name);
         }

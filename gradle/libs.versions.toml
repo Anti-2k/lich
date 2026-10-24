@@ -12,6 +12,10 @@ asm = "9.8"
 commons-compress = "1.27.1"
 # Nashorn, gone from the JDK since 15 (JEP 372); scripting mods get the standalone one (jdk.nashorn renamed).
 nashorn = "15.7"
+# LWJGL 3 replaces the game's LWJGL 2 (compat-lwjgl2 rebuilds LWJGL 2's API on it). PLAN.md §2.5.
+lwjgl3 = "3.3.6"
+# Only to generate compat-lwjgl2's rename table from: the game's own LWJGL 2 (1.8.9's), from Mojang's repository.
+lwjgl2 = "2.9.4-nightly-20150209"
 
 [libraries]
 gson = { module = "com.google.code.gson:gson", version.ref = "gson" }
@@ -29,3 +33,13 @@ asm-commons = { module = "org.ow2.asm:asm-commons", version.ref = "asm" }
 asm-util = { module = "org.ow2.asm:asm-util", version.ref = "asm" }
 commons-compress = { module = "org.apache.commons:commons-compress", version.ref = "commons-compress" }
 nashorn-core = { module = "org.openjdk.nashorn:nashorn-core", version.ref = "nashorn" }
+lwjgl3 = { module = "org.lwjgl:lwjgl", version.ref = "lwjgl3" }
+lwjgl3-glfw = { module = "org.lwjgl:lwjgl-glfw", version.ref = "lwjgl3" }
+lwjgl3-opengl = { module = "org.lwjgl:lwjgl-opengl", version.ref = "lwjgl3" }
+lwjgl3-openal = { module = "org.lwjgl:lwjgl-openal", version.ref = "lwjgl3" }
+# Not used by LWJGL 2 code: mods written for LWJGL 3 environments (lwjgl3ify, Essential, ReplayMod, OneConfig) call them.
+lwjgl3-stb = { module = "org.lwjgl:lwjgl-stb", version.ref = "lwjgl3" }
+lwjgl3-tinyfd = { module = "org.lwjgl:lwjgl-tinyfd", version.ref = "lwjgl3" }
+lwjgl3-tinyexr = { module = "org.lwjgl:lwjgl-tinyexr", version.ref = "lwjgl3" }
+lwjgl3-nanovg = { module = "org.lwjgl:lwjgl-nanovg", version.ref = "lwjgl3" }
+lwjgl2 = { module = "org.lwjgl.lwjgl:lwjgl", version.ref = "lwjgl2" }
