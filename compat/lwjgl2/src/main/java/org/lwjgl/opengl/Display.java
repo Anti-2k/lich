@@ -32,10 +32,12 @@ import java.util.Set;
  * thread that created the window: Forge's loading screen calls {@link #update} from another thread, which
  * swaps buffers but leaves the messages to the main thread, as LWJGL 2's Windows message loop did. GLFW
  * makes the process DPI-aware on Windows, so on a scaled desktop the window has real pixels where LWJGL 2's
- * was stretched by Windows.
+ * was stretched by Windows. As LWJGL 2 did each time it made a window, a windowed mode reads the
+ * {@code org.lwjgl.opengl.Window.undecorated} property: borderless-fullscreen mods set it, then a desktop-sized mode.
  */
 public final class Display {
     private static final Object LOCK = new Object();
+    private static final String UNDECORATED = "org.lwjgl.opengl.Window.undecorated";
 
     private static String title = "Game";
     private static DisplayMode desktopMode;
@@ -205,9 +207,11 @@ public final class Display {
         } else {
             int[] position = windowPosition(current);
             if (GLFW.glfwGetWindowMonitor(window) != 0) {
+                GLFW.glfwSetWindowAttrib(window, GLFW.GLFW_DECORATED, decorated());
                 GLFW.glfwSetWindowMonitor(window, 0, position[0], position[1], current.getWidth(), current.getHeight(),
                         GLFW.GLFW_DONT_CARE);
             } else {
+                GLFW.glfwSetWindowAttrib(window, GLFW.GLFW_DECORATED, decorated());
                 GLFW.glfwSetWindowSize(window, current.getWidth(), current.getHeight());
                 GLFW.glfwSetWindowPos(window, position[0], position[1]);
             }
@@ -216,6 +220,11 @@ public final class Display {
             GLFW.glfwSwapInterval(swapInterval);
         }
         readSizes();
+    }
+
+    /** LWJGL 2 read the property whenever it created a window, which every windowed mode change did. */
+    private static int decorated() {
+        return Boolean.getBoolean(UNDECORATED) ? GLFW.GLFW_FALSE : GLFW.GLFW_TRUE;
     }
 
     /** Where a window of {@code windowMode} goes: {@link #setLocation}'s, or centered on the desktop. */
@@ -421,6 +430,7 @@ public final class Display {
             GLFW.glfwDefaultWindowHints();
             GLFW.glfwWindowHint(GLFW.GLFW_VISIBLE, GLFW.GLFW_FALSE);
             GLFW.glfwWindowHint(GLFW.GLFW_RESIZABLE, resizable ? GLFW.GLFW_TRUE : GLFW.GLFW_FALSE);
+            GLFW.glfwWindowHint(GLFW.GLFW_DECORATED, decorated());
             ContextHints.apply(pixelFormat, attribs);
             long share = sharedDrawable instanceof SharedDrawable shared ? shared.context().window()
                     : sharedDrawable instanceof Pbuffer pbuffer ? pbuffer.context().window() : 0L;
