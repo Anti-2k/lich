@@ -1,6 +1,11 @@
 pluginManagement {
     includeBuild("build-logic")
+    // The dev.lich.mod plugin, which builds the per-version API modules (Minecraft with MCP names, reobf to SRG).
+    includeBuild("mcdev")
 }
+
+// remap-core (mappings and the hierarchy-aware remapper), which the runtime ships for the vanilla profile.
+includeBuild("mcdev")
 
 dependencyResolutionManagement {
     repositoriesMode = RepositoriesMode.FAIL_ON_PROJECT_REPOS
@@ -9,6 +14,16 @@ dependencyResolutionManagement {
         // The game's LWJGL 2, which compat-lwjgl2's rename table is generated from.
         maven("https://libraries.minecraft.net") {
             content { includeGroup("org.lwjgl.lwjgl") }
+        }
+        // MCP's SRG mappings, which the vanilla profile remaps the game with (installed next to Lich, never shipped).
+        maven("https://maven.minecraftforge.net") {
+            content { includeGroup("de.oceanlabs.mcp") }
+            // MCP's zips have no POM.
+            metadataSources { artifact() }
+        }
+        // Fabric's Mixin fork, the Mixin Lich mods run on (mixin-provider).
+        maven("https://maven.fabricmc.net") {
+            content { includeGroup("net.fabricmc") }
         }
     }
 }
@@ -39,7 +54,7 @@ module("api", "api")
 module("shared-compat-mc", "versions/shared/compat-mc")
 for (mc in listOf("1.7.10", "1.8.9")) {
     val prefix = "v" + mc.replace('.', '_')
-    for (part in listOf("compat-mc", "compat-forge", "api-impl")) {
+    for (part in listOf("compat-mc", "compat-forge", "api")) {
         module("$prefix-$part", "versions/$mc/$part")
     }
 }

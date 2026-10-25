@@ -48,13 +48,15 @@ public final class LichSystemClassLoader extends URLClassLoader {
 
     private static final List<String> DROPPED = new CopyOnWriteArrayList<>();
     private static final List<URL> LICH_JARS = new CopyOnWriteArrayList<>();
+    private static final List<Path> MAPPINGS = new CopyOnWriteArrayList<>();
+    private static final List<URL> DEFERRED = new CopyOnWriteArrayList<>();
     private static final Set<String> LICH_LOCATIONS = ConcurrentHashMap.newKeySet();
     private static volatile BiFunction<String, byte[], byte[]> transformer;
 
     /** Called by the JDK with the application class loader, which this loader replaces. */
     public LichSystemClassLoader(ClassLoader applicationClassLoader) {
         super("lich-system", classPath(System.getProperty("java.class.path", ""), System.getProperty("lich.lwjgl"),
-                DROPPED, LICH_JARS), ClassLoader.getPlatformClassLoader());
+                DROPPED, LICH_JARS, MAPPINGS, DEFERRED), ClassLoader.getPlatformClassLoader());
         LICH_JARS.forEach(url -> LICH_LOCATIONS.add(url.toExternalForm()));
     }
 
@@ -69,6 +71,24 @@ public final class LichSystemClassLoader extends URLClassLoader {
     /** The class path entries left out because Lich replaces them, for boot to log. */
     public static List<String> droppedEntries() {
         return List.copyOf(DROPPED);
+    }
+
+    /**
+     * Puts the jars held back from the class path (Lich's Mixin) on it, for a launch with Lich mods. Must be
+     * called before {@code LaunchClassLoader} is created, which copies this loader's URLs.
+     */
+    public void activateDeferred() {
+        for (URL url : DEFERRED) {
+            addURL(url);
+            LICH_JARS.add(url);
+            LICH_LOCATIONS.add(url.toExternalForm());
+        }
+        DEFERRED.clear();
+    }
+
+    /** MCP's SRG mappings ({@code mcp-<mc>-srg.zip}) on the class path, for the vanilla profile's remapper. */
+    public static List<Path> mappings() {
+        return List.copyOf(MAPPINGS);
     }
 
     /** Lich's own jars and the libraries it ships (ASM 9, Nashorn, LWJGL 3), which boot hides from mod discovery. */
@@ -160,10 +180,12 @@ public final class LichSystemClassLoader extends URLClassLoader {
     }
 
     /**
-     * {@code classPath} as URLs, without the jars Lich replaces (added to {@code dropped}); Lich's own
-     * jars are also added to {@code lich}. {@code lwjgl} is {@code -Dlich.lwjgl}: "2" keeps LWJGL 2.
+     * {@code classPath} as URLs, without the jars Lich replaces (added to {@code dropped}) or holds back
+     * (added to {@code deferred}); Lich's own jars are also added to {@code lich}, and MCP's mappings to
+     * {@code mappings} as well. {@code lwjgl} is {@code -Dlich.lwjgl}: "2" keeps LWJGL 2.
      */
-    static URL[] classPath(String classPath, String lwjgl, List<String> dropped, List<URL> lich) {
+    static URL[] classPath(String classPath, String lwjgl, List<String> dropped, List<URL> lich, List<Path> mappings,
+                           List<URL> deferred) {
         Map<String, Kind> kinds = new LinkedHashMap<>();
         for (String entry : classPath.split(java.io.File.pathSeparator)) {
             if (!entry.isEmpty()) {
@@ -186,9 +208,16 @@ public final class LichSystemClassLoader extends URLClassLoader {
             }
             try {
                 URL url = path.toUri().toURL();
+                if (kind == Kind.DEFERRED) {
+                    deferred.add(url);
+                    continue;
+                }
                 urls.add(url);
-                if (kind == Kind.LICH) {
+                if (kind == Kind.LICH || kind == Kind.MAPPINGS) {
                     lich.add(url);
+                }
+                if (kind == Kind.MAPPINGS) {
+                    mappings.add(path);
                 }
             } catch (MalformedURLException e) {
                 throw new IllegalStateException("Bad class path entry: " + entry, e);
@@ -209,11 +238,22 @@ public final class LichSystemClassLoader extends URLClassLoader {
         /** A jar of LWJGL 3, classes or natives. With {@link #LWJGL2_API}, it replaces LWJGL 2; without, it's left out. */
         LWJGL3,
         /** Lich's LWJGL 2 API on LWJGL 3 (compat-lwjgl2). */
-        LWJGL2_API
+        LWJGL2_API,
+        /** MCP's {@code mcp-<mc>-srg.zip}: kept, but hidden like Lich's jars; the vanilla profile remaps with it. */
+        MAPPINGS,
+        /**
+         * Lich's Mixin and MixinExtras: held back until a launch has Lich mods ({@link #activateDeferred}), so
+         * that without them Forge mods get the Mixin they ship, as on Forge.
+         */
+        DEFERRED
     }
 
     static Kind classify(Path path) {
-        if (!Files.isRegularFile(path) || !path.getFileName().toString().endsWith(".jar")) {
+        String fileName = path.getFileName().toString();
+        if (Files.isRegularFile(path) && fileName.startsWith("mcp-") && fileName.endsWith("-srg.zip")) {
+            return Kind.MAPPINGS;
+        }
+        if (!Files.isRegularFile(path) || !fileName.endsWith(".jar")) {
             return Kind.OTHER;
         }
         try (JarFile jar = new JarFile(path.toFile(), false)) {
@@ -232,6 +272,9 @@ public final class LichSystemClassLoader extends URLClassLoader {
             }
             if (manifest == null) {
                 return Kind.OTHER;
+            }
+            if (isLichMixin(jar, manifest)) {
+                return Kind.DEFERRED;
             }
             String title = manifest.getMainAttributes().getValue("Implementation-Title");
             if ("lich-compat-lwjgl2".equals(title)) {
@@ -254,6 +297,16 @@ public final class LichSystemClassLoader extends URLClassLoader {
         } catch (IOException e) {
             throw new UncheckedIOException("Can't read class path entry " + path, e);
         }
+    }
+
+    /** Fabric's Mixin fork (which Lich ships; mods shade SpongePowered's) or MixinExtras' own jar. */
+    private static boolean isLichMixin(JarFile jar, Manifest manifest) {
+        if (jar.getEntry("com/llamalad7/mixinextras/MixinExtrasBootstrap.class") != null
+                && jar.getEntry("LICENSE_MixinExtras") != null) {
+            return true;
+        }
+        return jar.getEntry("org/spongepowered/asm/launch/MixinTweaker.class") != null
+                && "https://fabricmc.net".equals(manifest.getMainAttributes().getValue("Implementation-Vendor"));
     }
 
     private static int major(String version) {

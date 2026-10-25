@@ -1,0 +1,10 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "dev.lich.testmod.mixin",
+  "refmap": "mixins.lichtest.refmap.json",
+  "compatibilityLevel": "JAVA_25",
+  "mixins": [
+    "MinecraftMixin"
+  ]
+}

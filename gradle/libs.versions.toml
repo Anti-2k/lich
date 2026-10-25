@@ -2,6 +2,7 @@
 gson = "2.13.1"
 # The versions Minecraft 1.7.10/1.8.9 put on the classpath. Lich compiles against them and never ships them.
 log4j-legacy = "2.0-beta9"
+gson-legacy = "2.2.4"
 jopt-simple = "4.6"
 commons-lang3-legacy = "3.3.2"
 junit = "5.13.4"
@@ -14,11 +15,16 @@ commons-compress = "1.27.1"
 nashorn = "15.7"
 # LWJGL 3 replaces the game's LWJGL 2 (compat-lwjgl2 rebuilds LWJGL 2's API on it). PLAN.md §2.5.
 lwjgl3 = "3.3.6"
+# The Mixin Lich mods get (PLAN.md §5.2): Fabric's fork of Mixin 0.8.7, which keeps the LaunchWrapper service, reads
+# Java 25 class files (compatibility level JAVA_25) and needs neither Guava nor a newer Gson than the game's 2.2.4.
+mixin = "0.17.3+mixin.0.8.7"
+mixinextras = "0.5.0"
 # Only to generate compat-lwjgl2's rename table from: the game's own LWJGL 2 (1.8.9's), from Mojang's repository.
 lwjgl2 = "2.9.4-nightly-20150209"
 
 [libraries]
 gson = { module = "com.google.code.gson:gson", version.ref = "gson" }
+gson-legacy = { module = "com.google.code.gson:gson", version.ref = "gson-legacy" }
 log4j-api-legacy = { module = "org.apache.logging.log4j:log4j-api", version.ref = "log4j-legacy" }
 log4j-core-legacy = { module = "org.apache.logging.log4j:log4j-core", version.ref = "log4j-legacy" }
 jopt-simple = { module = "net.sf.jopt-simple:jopt-simple", version.ref = "jopt-simple" }
@@ -43,3 +49,5 @@ lwjgl3-tinyfd = { module = "org.lwjgl:lwjgl-tinyfd", version.ref = "lwjgl3" }
 lwjgl3-tinyexr = { module = "org.lwjgl:lwjgl-tinyexr", version.ref = "lwjgl3" }
 lwjgl3-nanovg = { module = "org.lwjgl:lwjgl-nanovg", version.ref = "lwjgl3" }
 lwjgl2 = { module = "org.lwjgl.lwjgl:lwjgl", version.ref = "lwjgl2" }
+mixin = { module = "net.fabricmc:sponge-mixin", version.ref = "mixin" }
+mixinextras = { module = "io.github.llamalad7:mixinextras-common", version.ref = "mixinextras" }

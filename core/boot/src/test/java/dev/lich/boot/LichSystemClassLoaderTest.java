@@ -66,7 +66,7 @@ class LichSystemClassLoaderTest {
         List<URL> lich = new ArrayList<>();
         String classPath = String.join(File.pathSeparator, List.of(launchWrapper.toString(), lichLaunchWrapper.toString(),
                 asm5.toString(), asm9.toString(), shaded.toString(), lichBoot.toString(), forge.toString(), classesDir.toString()));
-        URL[] urls = LichSystemClassLoader.classPath(classPath, null, dropped, lich);
+        URL[] urls = LichSystemClassLoader.classPath(classPath, null, dropped, lich, new ArrayList<>(), new ArrayList<>());
 
         assertEquals(List.of(launchWrapper.toString(), asm5.toString()), dropped);
         assertEquals(List.of(url(lichLaunchWrapper), url(asm9), url(shaded), url(lichBoot), url(forge), url(classesDir)), List.of(urls));
@@ -87,21 +87,34 @@ class LichSystemClassLoaderTest {
 
         List<String> dropped = new ArrayList<>();
         List<URL> lich = new ArrayList<>();
-        URL[] urls = LichSystemClassLoader.classPath(all, null, dropped, lich);
+        URL[] urls = LichSystemClassLoader.classPath(all, null, dropped, lich, new ArrayList<>(), new ArrayList<>());
         assertEquals(List.of(lwjgl2.toString()), dropped, "LWJGL 3 replaces LWJGL 2; lwjgl_util stays");
         assertEquals(List.of(url(api), url(lwjgl3), url(natives), url(lwjglUtil)), List.of(urls));
         assertEquals(List.of(url(api), url(lwjgl3), url(natives)), lich, "hidden from FML like Lich's own jars");
 
         dropped.clear();
         lich.clear();
-        urls = LichSystemClassLoader.classPath(all, "2", dropped, lich);
+        urls = LichSystemClassLoader.classPath(all, "2", dropped, lich, new ArrayList<>(), new ArrayList<>());
         assertEquals(List.of(api.toString(), lwjgl3.toString(), natives.toString()), dropped, "-Dlich.lwjgl=2 keeps LWJGL 2");
         assertEquals(List.of(url(lwjgl2), url(lwjglUtil)), List.of(urls));
 
         dropped.clear();
         LichSystemClassLoader.classPath(String.join(File.pathSeparator, List.of(lwjgl3.toString(), lwjgl2.toString())),
-                null, dropped, new ArrayList<>());
+                null, dropped, new ArrayList<>(), new ArrayList<>(), new ArrayList<>());
         assertEquals(List.of(lwjgl3.toString()), dropped, "without Lich's LWJGL 2 API, LWJGL 3 can't replace LWJGL 2");
+    }
+
+    @Test
+    void keepsMcpMappingsButHidesThem(@TempDir Path dir) throws IOException {
+        Path srg = jar(dir.resolve("mcp-1.8.9-srg.zip"), null, "joined.srg");
+        Path other = jar(dir.resolve("other.zip"), null, "joined.srg");
+        List<URL> lich = new ArrayList<>();
+        List<Path> mappings = new ArrayList<>();
+        URL[] urls = LichSystemClassLoader.classPath(String.join(File.pathSeparator, List.of(srg.toString(), other.toString())),
+                null, new ArrayList<>(), lich, mappings, new ArrayList<>());
+        assertEquals(List.of(url(srg), url(other)), List.of(urls));
+        assertEquals(List.of(url(srg)), lich, "hidden from FML's mod discovery");
+        assertEquals(List.of(srg.toAbsolutePath()), mappings);
     }
 
     private static Manifest lwjgl3Manifest() {
