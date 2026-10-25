@@ -32,6 +32,16 @@ dependencies {
     add("lich", project(":boot"))
     add("lich", project(":launchwrapper"))
     add("lich", project(":transform"))
+    add("lich", project(":remap"))
+    add("lich", "dev.lich:remap-core")
+    add("lich", project(":loader"))
+    add("lich", project(":mixin-provider"))
+    add("lich", project(":api"))
+    add("lich", project(":v1_7_10-compat-forge"))
+    add("lich", project(":v1_8_9-compat-forge"))
+    // Lich mods' Mixin. The system class loader holds both back unless Lich mods are installed (PLAN.md §2.4).
+    add("lich", libs.mixin)
+    add("lich", libs.mixinextras)
     add("lich", project(":compat-jdk"))
     add("lich", project(":compat-asm"))
     add("lich", project(":shared-compat-mc"))
@@ -56,9 +66,25 @@ dependencies {
     }
 }
 
+// MCP's SRG mappings for the -Plich.mc version: the vanilla profile remaps the game to SRG names with them
+// (PLAN.md §3.1). Downloaded from Forge's Maven onto the user's machine, like the game itself; never shipped.
+val mcpMappings = configurations.dependencyScope("mcpMappings")
+val mcpMappingsFiles = configurations.resolvable("mcpMappingsFiles") {
+    extendsFrom(mcpMappings.get())
+    isTransitive = false
+}
+dependencies {
+    addProvider("mcpMappings", providers.gradleProperty("lich.mc").orElse("1.8.9").map { "de.oceanlabs.mcp:mcp:$it:srg@zip" })
+    // The API of that version only: both versions' API jars have the same class names.
+    addProvider("lich", providers.gradleProperty("lich.mc").orElse("1.8.9").map {
+        project.dependencies.project(mapOf("path" to ":v${it.replace('.', '_')}-api"))
+    })
+}
+
 /** Runs ProfileInstaller with the Lich jars, the JVM flags and [target] (--root or --prism-instance). */
 fun JavaExec.runInstaller(target: Provider<List<String>>) {
     val mcVersion = providers.gradleProperty("lich.mc").orElse("1.8.9")
+    val mappings: FileCollection = mcpMappingsFiles.get()
     val flags = rootProject.layout.projectDirectory.file("core/boot/src/main/resources/dev/lich/boot/jvm-flags.txt").asFile
     val jars: FileCollection = lichRuntime.get()
     val version = project.version.toString()
@@ -80,11 +106,13 @@ fun JavaExec.runInstaller(target: Provider<List<String>>) {
 
     group = "lich"
     inputs.files(jars).withPropertyName("lichJars")
+    inputs.files(mappings).withPropertyName("mcpMappings")
     classpath = sourceSets.main.get().runtimeClasspath
     mainClass = application.mainClass
     argumentProviders.add(CommandLineArgumentProvider {
         listOf("--mc", mcVersion.get(), "--flags", flags.absolutePath) + target.get() +
-            libraries.get().flatMap { listOf("--library", it) }
+            libraries.get().flatMap { listOf("--library", it) } +
+            listOf("--library", "de.oceanlabs.mcp:mcp:${mcVersion.get()}:srg@zip=${mappings.singleFile.absolutePath}")
     })
 }
 

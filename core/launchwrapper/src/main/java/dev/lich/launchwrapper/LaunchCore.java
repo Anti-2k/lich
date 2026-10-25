@@ -160,6 +160,7 @@ public final class LaunchCore {
         final Class<?> clazz = Class.forName(launchTarget, false, Launch.classLoader);
         final Method mainMethod = clazz.getMethod("main", String[].class);
 
+        hooks.launching(Launch.classLoader);
         LogWrapper.info("Launching wrapped minecraft {%s}", launchTarget);
         mainMethod.invoke(null, (Object) argumentList.toArray(new String[0]));
     }

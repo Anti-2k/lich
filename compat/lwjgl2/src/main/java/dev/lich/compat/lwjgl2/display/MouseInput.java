@@ -22,6 +22,11 @@ public final class MouseInput {
     private static final ArrayDeque<Event> QUEUE = new ArrayDeque<>();
     private static final boolean[] BUTTONS = new boolean[BUTTON_COUNT];
     private static boolean created;
+    /**
+     * Dev runs (devlaunch, with {@code -Dlich.dev.noMouseGrab=true}) share the desktop with whoever is using it: the
+     * game still sees a grabbed mouse, but the real cursor is never locked to the window or moved.
+     */
+    private static final boolean NO_GRAB = Boolean.getBoolean("lich.dev.noMouseGrab");
     private static boolean grabbed;
     private static boolean clip = true;
     private static boolean inside;
@@ -183,7 +188,7 @@ public final class MouseInput {
         boolean was = grabbed;
         grabbed = grab;
         long window = WindowState.handle();
-        if (!created || window == 0) {
+        if (!created || window == 0 || NO_GRAB) {
             return;
         }
         if (grab && !was) {

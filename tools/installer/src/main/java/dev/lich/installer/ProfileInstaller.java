@@ -139,20 +139,23 @@ public final class ProfileInstaller {
     }
 
     /**
-     * {@code group:artifact:version[:classifier]} →
-     * {@code group/as/dirs/artifact/version/artifact-version[-classifier].jar}.
+     * {@code group:artifact:version[:classifier][@extension]} →
+     * {@code group/as/dirs/artifact/version/artifact-version[-classifier].extension} (default {@code jar}).
      */
     static String mavenPath(String coordinates) {
-        String[] parts = coordinates.split(":");
+        String[] parts = coordinates.split("@", 2)[0].split(":");
         if (parts.length != 3 && parts.length != 4) {
-            throw new IllegalArgumentException("Expected group:artifact:version[:classifier], got " + coordinates);
+            throw new IllegalArgumentException("Expected group:artifact:version[:classifier][@extension], got " + coordinates);
         }
-        return parts[0].replace('.', '/') + "/" + parts[1] + "/" + parts[2] + "/" + fileName(parts);
+        return parts[0].replace('.', '/') + "/" + parts[1] + "/" + parts[2] + "/" + fileName(coordinates);
     }
 
-    /** {@code artifact-version[-classifier].jar}, as Maven and Prism name a library's file. */
-    static String fileName(String[] coordinates) {
-        return coordinates[1] + "-" + coordinates[2] + (coordinates.length == 4 ? "-" + coordinates[3] : "") + ".jar";
+    /** {@code artifact-version[-classifier].extension}, as Maven and Prism name a library's file. */
+    static String fileName(String coordinates) {
+        String[] withExtension = coordinates.split("@", 2);
+        String[] parts = withExtension[0].split(":");
+        String extension = withExtension.length == 2 ? withExtension[1] : "jar";
+        return parts[1] + "-" + parts[2] + (parts.length == 4 ? "-" + parts[3] : "") + "." + extension;
     }
 
     private static String sha1(Path file) throws IOException {

@@ -4,18 +4,30 @@ import dev.lich.compat.asm.AsmCompat;
 import dev.lich.compat.jdk.JdkCompat;
 import dev.lich.compat.lwjgl2.Lwjgl2Compat;
 import dev.lich.compat.v1_7_10.Minecraft1710;
+import dev.lich.compat.v1_7_10.forge.Forge1710;
 import dev.lich.compat.v1_8_9.Minecraft189;
+import dev.lich.compat.v1_8_9.forge.Forge189;
 import dev.lich.launchwrapper.LaunchCore;
 import dev.lich.launchwrapper.LaunchHooks;
 import dev.lich.launchwrapper.LichExclusions;
 import dev.lich.launchwrapper.LichSources;
 import dev.lich.launchwrapper.LichTransformers;
+import dev.lich.loader.LichLoader;
+import dev.lich.loader.LichMod;
+import dev.lich.loader.LichTweaker;
+import dev.lich.loader.ModLoadingException;
+import dev.lich.remap.SrgRemapper;
+import dev.lich.remap.core.SrgFile;
 import dev.lich.transform.CompatTransformer;
 import net.minecraft.launchwrapper.Launch;
 import net.minecraft.launchwrapper.LaunchClassLoader;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.lang.reflect.InvocationTargetException;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Locale;
 import java.util.function.BiFunction;
@@ -29,6 +41,7 @@ import java.util.stream.Stream;
  */
 public final class Main {
     private static final String VANILLA_TWEAKER = LichVanillaTweaker.class.getName();
+    private static final String MIXIN_TWEAKER = "org.spongepowered.asm.launch.MixinTweaker";
 
     private Main() {
     }
@@ -63,7 +76,10 @@ public final class Main {
         if (!dropped.isEmpty()) {
             log.info("Left out of the class path, Lich ships its own: {}", dropped);
         }
-        installCompat(log, tweakClasses);
+        String minecraft = Profile.minecraftVersion(tweakClasses, LichSystemClassLoader.mappings());
+        boolean srgNames = profile == Profile.FORGE || useSrgRemapper(log);
+        List<LichMod> mods = loadLichMods(log, args, profile, minecraft, srgNames, version, relauncher);
+        installCompat(log, tweakClasses, minecraft, srgNames, !mods.isEmpty());
 
         String[] launchArgs = switch (profile) {
             case VANILLA -> {
@@ -76,22 +92,90 @@ public final class Main {
             // FML's tweaker is already in the arguments and picks the launch target itself.
             case FORGE -> args;
         };
+        if (!mods.isEmpty()) {
+            // Mixin's tweaker, then Lich's, which registers the mods' configs once Mixin is up.
+            launchArgs = Stream.concat(Stream.of(launchArgs), Stream.of("--tweakClass", MIXIN_TWEAKER,
+                    "--tweakClass", LichTweaker.class.getName())).toArray(String[]::new);
+        }
 
         // Through Launch.main, like a plain LaunchWrapper start: mods look for its frames on the stack.
-        LaunchCore.useHooks(new Hooks());
+        LaunchCore.useHooks(new Hooks(mods));
         Launch.main(launchArgs);
+    }
+
+    /**
+     * Finds the Lich mods and gets the launch ready for them: Lich's Mixin on the class path, and their jars
+     * out of FML's sight. Mods that can't load stop the game here, with every problem in the log; so does a
+     * vanilla profile without SRG names, which Lich mods are written against.
+     */
+    private static List<LichMod> loadLichMods(Logger log, String[] args, Profile profile, String minecraft, boolean srgNames,
+                                              String version, ClassLoader relauncher) {
+        List<LichMod> mods;
+        try {
+            mods = LichLoader.load(Profile.gameDir(args), minecraft, profile == Profile.FORGE, version);
+        } catch (ModLoadingException e) {
+            log.fatal(e.getMessage());
+            System.exit(1);
+            throw e;
+        }
+        if (mods.isEmpty()) {
+            return mods;
+        }
+        if (!srgNames || minecraft == null) {
+            log.fatal("Lich mods are installed, but this launch has no MCP mappings (mcp-<version>-srg.zip): reinstall Lich");
+            System.exit(1);
+        }
+        if (relauncher != null || !(ClassLoader.getSystemClassLoader() instanceof LichSystemClassLoader system)) {
+            log.warn("Lich mods can't load in a relaunched game yet; leaving out {}", mods);
+            return List.of();
+        }
+        system.activateDeferred();
+        // Mixin's LaunchWrapper service with the Java 8 cap lifted (Lich mods are Java 25 classes).
+        System.setProperty("mixin.service", "dev.lich.mixin.LichMixinService");
+        if (profile == Profile.FORGE) {
+            mods.forEach(mod -> LichSources.hideModFile(mod.source().toFile()));
+        }
+        log.info("Lich mods: {}; hooks: {}", mods, LichLoader.hooks());
+        return mods;
+    }
+
+    /**
+     * In the vanilla profile, reads MCP's SRG mappings from the class path for {@link SrgRemapper}, which the
+     * vanilla tweaker registers, so the game runs with SRG names as under Forge. Returns whether it will.
+     * Without the mappings (an install from before Lich had them) the game runs obfuscated, without Lich's
+     * game fixes, and Lich mods can't load.
+     */
+    private static boolean useSrgRemapper(Logger log) {
+        List<Path> mappings = LichSystemClassLoader.mappings();
+        if (mappings.isEmpty()) {
+            log.warn("No MCP mappings (mcp-<version>-srg.zip) on the class path: the game runs with obfuscated names");
+            return false;
+        }
+        try {
+            SrgRemapper.use(SrgFile.readZip(mappings.getFirst(), "joined.srg"));
+        } catch (IOException e) {
+            throw new UncheckedIOException("Can't read MCP's mappings from " + mappings.getFirst(), e);
+        }
+        LichVanillaTweaker.remapToSrg();
+        return true;
     }
 
     /**
      * Runs the compat pass on every class Lich defines from now on: in {@code LaunchClassLoader} ahead
      * of all transformers, and in the system class loader for the classes LaunchWrapper excludes.
      */
-    private static void installCompat(Logger log, List<String> tweakClasses) {
+    private static void installCompat(Logger log, List<String> tweakClasses, String minecraft, boolean srgNames,
+                                      boolean lichMods) {
         CompatTransformer.Builder builder = CompatTransformer.builder();
         JdkCompat.register(builder);
         AsmCompat.register(builder);
         if (tweakClasses.contains(Profile.FML_1_7_10)) {
             AsmCompat.registerFml1710(builder);
+            if (lichMods) {
+                Forge1710.hideLichMods(builder);
+            }
+        } else if (tweakClasses.contains(Profile.FML_1_8_9) && lichMods) {
+            Forge189.hideLichMods(builder);
         }
         CompatTransformer compat = builder
                 .listener((className, what) -> log.info("Compat: {} in {}", what, className))
@@ -116,15 +200,15 @@ public final class Main {
             LichSystemClassLoader.setTransformer(systemPass);
         }
 
-        // Fixes to the game itself, after FML has patched and deobfuscated it (so, only with Forge for
-        // now: the vanilla profile has no SRG names until Lich's own remapper, PLAN.md Phase 5).
+        // Fixes to the game itself, on SRG names: after FML (or Lich's remapper) has deobfuscated it, and after
+        // FML's binpatches, which checksum the bytes they patch.
         CompatTransformer.Builder gameFixes = CompatTransformer.builder();
-        if (tweakClasses.contains(Profile.FML_1_7_10)) {
+        if ("1.7.10".equals(minecraft)) {
             Minecraft1710.registerSrgPatches(gameFixes);
-        } else if (tweakClasses.contains(Profile.FML_1_8_9)) {
+        } else if ("1.8.9".equals(minecraft)) {
             Minecraft189.registerSrgPatches(gameFixes);
         }
-        if (Profile.detect(tweakClasses) == Profile.FORGE) {
+        if (srgNames) {
             CompatTransformer game = gameFixes
                     .listener((className, what) -> log.info("Game fix: {} in {}", what, className))
                     .build();
@@ -159,14 +243,37 @@ public final class Main {
     }
 
     private static final class Hooks implements LaunchHooks {
+        /** Run from the API in LaunchClassLoader, where the mods' classes are. */
+        private static final String ENTRYPOINTS = "dev.lich.api.impl.Entrypoints";
+
+        private final List<LichMod> mods;
+
+        Hooks(List<LichMod> mods) {
+            this.mods = mods;
+        }
+
         @Override
         public void classLoaderCreated(LaunchClassLoader classLoader) {
             // Lich's launch-time classes and shims stay in the system class loader with LaunchWrapper's:
-            // one copy each, whichever loader the code that calls them comes from.
+            // one copy each, whichever loader the code that calls them comes from. That includes the loader,
+            // whose state the API (in LaunchClassLoader) reads, and Lich's Mixin setup.
             classLoader.addClassLoaderExclusion("dev.lich.boot.");
             classLoader.addClassLoaderExclusion("dev.lich.launchwrapper.");
             classLoader.addClassLoaderExclusion("dev.lich.transform.");
             classLoader.addClassLoaderExclusion("dev.lich.compat.");
+            classLoader.addClassLoaderExclusion("dev.lich.remap.");
+            classLoader.addClassLoaderExclusion("dev.lich.loader.");
+            classLoader.addClassLoaderExclusion("dev.lich.mixin.");
+            // The mods themselves, next to the game, where FML's mod discovery doesn't look.
+            for (LichMod mod : mods) {
+                classLoader.addURL(mod.url());
+                LichSources.hide(mod.url());
+            }
+            if (!mods.isEmpty()) {
+                // MixinExtras runs in the system class loader with Lich's Mixin and defines the helper classes its
+                // injectors use there (@Local's references): woven game code has to see that copy.
+                classLoader.addClassLoaderExclusion("com.llamalad7.mixinextras.");
+            }
             // One ASM, Lich's, for Lich's shims and for LaunchClassLoader's transformers alike. FML 1.8.9
             // excludes it itself; 1.7.10 doesn't, and a second copy in LaunchClassLoader breaks the ASM
             // shims (loader constraint violations on org.objectweb.asm.Type).
@@ -180,6 +287,21 @@ public final class Main {
             }
             ClassLoader relauncher = Relaunch.relauncher();
             (relauncher == null ? LichSystemClassLoader.lichJars() : Relaunch.lichJars(relauncher)).forEach(LichSources::hide);
+        }
+
+        /** The mods' preLaunch entrypoints: the game's classes haven't loaded yet. */
+        @Override
+        public void launching(LaunchClassLoader classLoader) {
+            if (mods.isEmpty()) {
+                return;
+            }
+            try {
+                Class.forName(ENTRYPOINTS, true, classLoader).getMethod("run", String.class).invoke(null, "preLaunch");
+            } catch (InvocationTargetException e) {
+                throw e.getCause() instanceof RuntimeException runtime ? runtime : new IllegalStateException(e.getCause());
+            } catch (ReflectiveOperationException e) {
+                throw new IllegalStateException("Lich's API is missing from the class path", e);
+            }
         }
     }
 }

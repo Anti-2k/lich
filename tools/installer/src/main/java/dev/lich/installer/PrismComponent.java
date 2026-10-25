@@ -36,9 +36,8 @@ final class PrismComponent {
 
         JsonArray libraryList = new JsonArray();
         for (Map.Entry<String, Path> library : libraries.entrySet()) {
-            String[] coordinates = library.getKey().split(":");
-            // Prism looks up "local" libraries as <instance>/libraries/<artifact>-<version>[-<classifier>].jar.
-            Path target = instance.resolve("libraries").resolve(ProfileInstaller.fileName(coordinates));
+            // Prism looks up "local" libraries as <instance>/libraries/<artifact>-<version>[-<classifier>].<extension>.
+            Path target = instance.resolve("libraries").resolve(ProfileInstaller.fileName(library.getKey()));
             Files.createDirectories(target.getParent());
             Files.copy(library.getValue(), target, StandardCopyOption.REPLACE_EXISTING);
             JsonObject entry = new JsonObject();

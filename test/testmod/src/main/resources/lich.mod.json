@@ -1,0 +1,22 @@
+{
+  "schema": 1,
+  "id": "lichtest",
+  "version": "0.1.0",
+  "name": "Lich test mod",
+  "description": "Exercises Lich's loader: entrypoints, hooks, Mixin and an access widener.",
+  "authors": ["Lich"],
+  "minecraft": "1.8.9",
+  "depends": {
+    "lich": ">=0.1",
+    "forge": "optional"
+  },
+  "entrypoints": {
+    "preLaunch": ["dev.lich.testmod.TestMod"],
+    "init": ["dev.lich.testmod.TestMod"],
+    "client": ["dev.lich.testmod.TestMod"]
+  },
+  "hooks": ["client.tick", "render.hud", "screen", "chat.receive"],
+  "mixins": ["mixins.lichtest.json"],
+  "accessWidener": "lichtest.aw",
+  "javaVersion": 25
+}

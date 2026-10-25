@@ -59,6 +59,8 @@ a phase, and update it when a decision changes or a **(verify)** item gets check
   once per member and package.
 - The game's stdout is log4j XML (Mojang's launcher config). Read `run/<version>/logs/latest.log`
   for plain text. The main menu is reached once it shows `Sound engine started` and a `…atlas` line.
+- The user works on the same desktop while test games run: always pass `--jvm-arg -Dlich.dev.noMouseGrab=true` in
+  `-Plich.args` (Lich profiles), so the game never locks or moves the real cursor; it still behaves as if grabbed.
 - To stop a game you started, match the java process on `lich\run\cache` and its main class
   (`dev.lich.boot.Main`, `net.minecraft.launchwrapper.Launch` or `net.minecraft.client.main.Main`) in
   its command line. Never kill java processes by name alone: Gradle daemons and the user's own game

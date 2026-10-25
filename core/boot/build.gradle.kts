@@ -7,6 +7,10 @@ plugins {
 dependencies {
     implementation(project(":launchwrapper"))
     implementation(project(":transform"))
+    implementation(project(":remap"))
+    implementation(project(":loader"))
+    implementation(project(":v1_7_10-compat-forge"))
+    implementation(project(":v1_8_9-compat-forge"))
     implementation(project(":compat-jdk"))
     implementation(project(":compat-asm"))
     implementation(project(":compat-lwjgl2"))
