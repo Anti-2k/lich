@@ -24,6 +24,18 @@ class LegacyReflectionTest {
         RED
     }
 
+    /** Shaped like Forge's {@code BiomeDictionary.Type}, whose constructor is varargs. */
+    enum Tag {
+        HOT,
+        DESERT(HOT);
+
+        final Tag[] subTags;
+
+        Tag(Tag... subTags) {
+            this.subTags = subTags;
+        }
+    }
+
     @Test
     void objectHolderRefWritesAStaticFinal() throws Exception {
         String factoryName = "dev.lich.compat.jdk.reflect.ReflectionFactory"; // was "sun.reflect.ReflectionFactory"
@@ -63,5 +75,15 @@ class LegacyReflectionTest {
         Color green = (Color) accessor.newInstance(new Object[]{"GREEN", 1});
         assertEquals("GREEN", green.name());
         assertEquals(1, green.ordinal());
+    }
+
+    @Test
+    void enumHelperPassesAVarargsArrayThrough() throws Exception {
+        Constructor<Tag> constructor = Tag.class.getDeclaredConstructor(String.class, int.class, Tag[].class);
+        ConstructorAccessor accessor = ReflectionFactory.getReflectionFactory().newConstructorAccessor(constructor);
+        Tag[] subTags = {Tag.HOT, Tag.DESERT};
+        Tag wasteland = (Tag) accessor.newInstance(new Object[]{"WASTELAND", 2, subTags});
+        assertEquals("WASTELAND", wasteland.name());
+        assertSame(subTags, wasteland.subTags);
     }
 }

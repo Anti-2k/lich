@@ -640,6 +640,10 @@ differ by 1 ulp between JDKs **(verify)**.
     only one, 1217 warnings and errors each. Lich reached the menu in 48 s (Java 8: 65 s) and joined in 122 s
     (196 s). The one real difference: ModularUI turns its custom cursors off when `Sys.getVersion()` is 3+
     (written for lwjgl3ify, which has no LWJGL 2 cursors), so its screens show the normal cursor.
+    The user's first singleplayer world in Prism (2026-10-27) crashed within a few ticks: Regional Water adds a
+    `BiomeDictionary.Type` through `EnumHelper`, whose constructor is varargs, and Lich's `newConstructorAccessor`
+    wrapped the array argument in another array (fixed: fixed-arity handle). The server-join harness can't see
+    server-side code like this, which is why a singleplayer-world mode is next.
 - **Harness**: a `testmod` (built as both a Forge mod and a Lich mod). With `-Dlich.test=…` set it
   loads a world, runs N ticks, optionally joins a local server, dumps a report, and exits with a status
   code.

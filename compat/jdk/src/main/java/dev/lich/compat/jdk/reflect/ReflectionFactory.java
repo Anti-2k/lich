@@ -43,12 +43,18 @@ public final class ReflectionFactory {
         };
     }
 
-    /** An accessor that calls the constructor through a method handle, which works for enums too. */
+    /**
+     * An accessor that calls the constructor through a method handle, which works for enums too. The
+     * handle has fixed arity: Java 8's accessor took the arguments one per parameter, so a varargs
+     * constructor's array comes in as the last argument (Forge's {@code BiomeDictionary.Type}), and a
+     * varargs collector would wrap it in another array.
+     */
     public ConstructorAccessor newConstructorAccessor(Constructor<?> constructor) {
         MethodHandle handle;
         try {
             handle = MethodHandles.privateLookupIn(constructor.getDeclaringClass(), MethodHandles.lookup())
-                    .unreflectConstructor(constructor);
+                    .unreflectConstructor(constructor)
+                    .asFixedArity();
         } catch (IllegalAccessException e) {
             throw new IllegalStateException("Can't access " + constructor, e);
         }
