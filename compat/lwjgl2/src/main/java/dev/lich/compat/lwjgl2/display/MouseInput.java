@@ -13,7 +13,7 @@ import java.util.ArrayDeque;
  */
 public final class MouseInput {
     public static final int BUTTON_COUNT = GLFW.GLFW_MOUSE_BUTTON_LAST + 1;
-    private static final int MAX_EVENTS = 512;
+    public static final int MAX_EVENTS = 512;
     private static final int WHEEL_UNIT = 120;
 
     private record Event(int button, boolean state, int dx, int dy, int dwheel, int x, int y, long nanos) {
@@ -165,6 +165,20 @@ public final class MouseInput {
 
     public static synchronized void enter(boolean entered) {
         inside = entered;
+    }
+
+    /**
+     * Writes the events {@link #next} hasn't returned yet into {@code buffer} in LWJGL 2's layout (button, state, then
+     * dx/dy while grabbed or x/y otherwise, wheel, nanoseconds; {@code Mouse.EVENT_SIZE} bytes each), ready to read.
+     */
+    public static synchronized void writePending(java.nio.ByteBuffer buffer) {
+        buffer.clear();
+        for (Event event : QUEUE) {
+            buffer.put((byte) event.button()).put((byte) (event.state() ? 1 : 0))
+                    .putInt(grabbed ? event.dx() : event.x()).putInt(grabbed ? event.dy() : event.y())
+                    .putInt(event.dwheel()).putLong(event.nanos());
+        }
+        buffer.flip();
     }
 
     public static synchronized boolean next() {

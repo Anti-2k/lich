@@ -1,5 +1,6 @@
 package net.minecraft.launchwrapper;
 
+import dev.lich.launchwrapper.ImageIoProviders;
 import dev.lich.launchwrapper.LichExclusions;
 import dev.lich.launchwrapper.LichSources;
 import dev.lich.launchwrapper.LichTransformers;
@@ -19,6 +20,7 @@ import java.security.CodeSource;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Enumeration;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -53,6 +55,8 @@ import java.util.jar.Manifest;
  *       doesn't scan Lich's own jars.</li>
  *   <li>Classes matching {@link LichExclusions} always come from the parent, even when a mod removes the
  *       same prefix from {@code classLoaderExceptions}.</li>
+ *   <li>ImageIO's provider lists ({@code META-INF/services/javax.imageio.spi.*}) leave out classes that
+ *       aren't there, which Java 8 skipped under FML's SecurityManager ({@link ImageIoProviders}).</li>
  * </ul>
  */
 public class LaunchClassLoader extends URLClassLoader {
@@ -402,6 +406,13 @@ public class LaunchClassLoader extends URLClassLoader {
     public void addURL(final URL url) {
         super.addURL(url);
         sources.add(url);
+    }
+
+    /** ImageIO's provider lists without classes that aren't there, as Java 8 under FML treated them (ImageIoProviders). */
+    @Override
+    public Enumeration<URL> getResources(final String name) throws IOException {
+        final Enumeration<URL> found = super.getResources(name);
+        return ImageIoProviders.applies(name) ? ImageIoProviders.filter(found, this) : found;
     }
 
     public List<URL> getSources() {

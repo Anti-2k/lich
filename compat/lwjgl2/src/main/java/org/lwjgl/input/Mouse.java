@@ -6,12 +6,20 @@ import org.lwjgl.LWJGLException;
 import org.lwjgl.glfw.GLFW;
 import org.lwjgl.opengl.Display;
 
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.util.HashMap;
 import java.util.Map;
 
 /**
  * LWJGL 2's mouse, on GLFW (see {@link MouseInput} for coordinates, grabbing and the wheel). Button names,
  * the exceptions for using it before {@link #create} and the native cursor handling are LWJGL 2's.
+ *
+ * <p>The position the getters return lives in LWJGL 2's own private fields, {@code x}, {@code y}, {@code event_x}
+ * and {@code event_y}, refreshed when LWJGL 2 refreshed them: {@link #poll} (from {@code Display.update}), {@link #next},
+ * {@link #setCursorPosition} and grabbing. Essential sets them by reflection to move the position the game sees while
+ * it draws an overlay, which then holds until the next refresh, as on LWJGL 2. Likewise {@code readBuffer} holds the
+ * events {@link #next} hasn't returned yet, in LWJGL 2's layout: TC4Tweak checks it for pending events.
  */
 public class Mouse {
     public static final int EVENT_SIZE = 1 + 1 + 4 + 4 + 4 + 8;
@@ -19,6 +27,13 @@ public class Mouse {
     private static final String[] BUTTON_NAMES = new String[16];
     private static final Map<String, Integer> BUTTON_INDICES = new HashMap<>(16);
     private static Cursor currentCursor;
+    private static int x;
+    private static int y;
+    private static int event_x;
+    private static int event_y;
+    // Not final, direct and in native order, as LWJGL 2 made it (BufferUtils).
+    private static ByteBuffer readBuffer = ByteBuffer.allocateDirect(EVENT_SIZE * MouseInput.MAX_EVENTS)
+            .order(ByteOrder.nativeOrder());
 
     static {
         for (int i = 0; i < BUTTON_NAMES.length; i++) {
@@ -58,6 +73,8 @@ public class Mouse {
             throw new IllegalStateException("Mouse is not created");
         }
         MouseInput.setCursorPosition(newX, newY);
+        x = event_x = newX;
+        y = event_y = newY;
     }
 
     public static void create() throws LWJGLException {
@@ -65,6 +82,9 @@ public class Mouse {
             throw new IllegalStateException("Display must be created.");
         }
         MouseInput.create();
+        refresh();
+        event_x = x;
+        event_y = y;
     }
 
     public static boolean isCreated() {
@@ -76,11 +96,18 @@ public class Mouse {
         currentCursor = null;
     }
 
-    /** Events arrive while {@code Display} processes messages; there's nothing left to fetch here. */
+    /** Events arrive while {@code Display} processes messages; this only takes the position they left. */
     public static void poll() {
         if (!isCreated()) {
             throw new IllegalStateException("Mouse must be created before you can poll it");
         }
+        refresh();
+    }
+
+    private static void refresh() {
+        x = MouseInput.getX();
+        y = MouseInput.getY();
+        MouseInput.writePending(readBuffer);
     }
 
     public static boolean isButtonDown(int button) {
@@ -103,7 +130,13 @@ public class Mouse {
         if (!isCreated()) {
             throw new IllegalStateException("Mouse must be created before you can read events");
         }
-        return MouseInput.next();
+        if (!MouseInput.next()) {
+            return false;
+        }
+        event_x = MouseInput.eventX();
+        event_y = MouseInput.eventY();
+        MouseInput.writePending(readBuffer);
+        return true;
     }
 
     public static int getEventButton() {
@@ -123,11 +156,11 @@ public class Mouse {
     }
 
     public static int getEventX() {
-        return MouseInput.eventX();
+        return event_x;
     }
 
     public static int getEventY() {
-        return MouseInput.eventY();
+        return event_y;
     }
 
     public static int getEventDWheel() {
@@ -139,11 +172,11 @@ public class Mouse {
     }
 
     public static int getX() {
-        return MouseInput.getX();
+        return x;
     }
 
     public static int getY() {
-        return MouseInput.getY();
+        return y;
     }
 
     public static int getDX() {
@@ -172,6 +205,11 @@ public class Mouse {
 
     public static void setGrabbed(boolean grab) {
         MouseInput.setGrabbed(grab);
+        if (isCreated()) {
+            refresh();
+            event_x = x;
+            event_y = y;
+        }
     }
 
     /** Animated cursors aren't supported, so there's no frame to advance. */

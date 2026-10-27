@@ -13,6 +13,12 @@ asm = "9.8"
 commons-compress = "1.27.1"
 # Nashorn, gone from the JDK since 15 (JEP 372); scripting mods get the standalone one (jdk.nashorn renamed).
 nashorn = "15.7"
+# JAXB, gone from the JDK since 11 (JEP 320), for mods that read XML with it (Enhanced Loot Bags) or use its
+# DatatypeConverter. 2.3 is the last line with the javax.xml.bind package Java 8 had; the rest is what its runtime needs.
+jaxb-api = "2.3.3"
+jaxb-runtime = "2.3.9"
+istack-commons = "3.0.12"
+activation = "1.2.2"
 # LWJGL 3 replaces the game's LWJGL 2 (compat-lwjgl2 rebuilds LWJGL 2's API on it). PLAN.md §2.5.
 lwjgl3 = "3.3.6"
 # The Mixin Lich mods get (PLAN.md §5.2): Fabric's fork of Mixin 0.8.7, which keeps the LaunchWrapper service, reads
@@ -39,6 +45,11 @@ asm-commons = { module = "org.ow2.asm:asm-commons", version.ref = "asm" }
 asm-util = { module = "org.ow2.asm:asm-util", version.ref = "asm" }
 commons-compress = { module = "org.apache.commons:commons-compress", version.ref = "commons-compress" }
 nashorn-core = { module = "org.openjdk.nashorn:nashorn-core", version.ref = "nashorn" }
+jaxb-api = { module = "jakarta.xml.bind:jakarta.xml.bind-api", version.ref = "jaxb-api" }
+jaxb-runtime = { module = "org.glassfish.jaxb:jaxb-runtime", version.ref = "jaxb-runtime" }
+jaxb-txw2 = { module = "org.glassfish.jaxb:txw2", version.ref = "jaxb-runtime" }
+istack-commons-runtime = { module = "com.sun.istack:istack-commons-runtime", version.ref = "istack-commons" }
+activation = { module = "com.sun.activation:jakarta.activation", version.ref = "activation" }
 lwjgl3 = { module = "org.lwjgl:lwjgl", version.ref = "lwjgl3" }
 lwjgl3-glfw = { module = "org.lwjgl:lwjgl-glfw", version.ref = "lwjgl3" }
 lwjgl3-opengl = { module = "org.lwjgl:lwjgl-opengl", version.ref = "lwjgl3" }

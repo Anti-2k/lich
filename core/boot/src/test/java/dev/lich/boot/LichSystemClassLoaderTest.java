@@ -105,6 +105,20 @@ class LichSystemClassLoaderTest {
     }
 
     @Test
+    void hidesTheJdkLibrariesLichShips(@TempDir Path dir) throws IOException {
+        // Nashorn, then JAXB's API, runtime, txw2, istack and activation: each by the class classify looks for.
+        List<String> markers = List.of("org/openjdk/nashorn/api/scripting/NashornScriptEngineFactory.class",
+                "javax/xml/bind/JAXBContext.class", "com/sun/xml/bind/v2/ContextFactory.class", "com/sun/xml/txw2/TXW.class",
+                "com/sun/istack/Pool.class", "javax/activation/DataHandler.class");
+        for (int i = 0; i < markers.size(); i++) {
+            Path library = jar(dir.resolve("library-" + i + ".jar"), null, markers.get(i));
+            assertEquals(LichSystemClassLoader.Kind.LICH, LichSystemClassLoader.classify(library), markers.get(i));
+        }
+        Path mod = jar(dir.resolve("some-mod.jar"), null, "com/example/Mod.class");
+        assertEquals(LichSystemClassLoader.Kind.OTHER, LichSystemClassLoader.classify(mod));
+    }
+
+    @Test
     void keepsMcpMappingsButHidesThem(@TempDir Path dir) throws IOException {
         Path srg = jar(dir.resolve("mcp-1.8.9-srg.zip"), null, "joined.srg");
         Path other = jar(dir.resolve("other.zip"), null, "joined.srg");

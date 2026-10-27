@@ -281,6 +281,11 @@ public final class Main {
             // Nashorn, for scripting mods: one copy, untouched by mod transformers. Scripts still see game
             // classes, since its engines load them through the context class loader (LaunchClassLoader).
             classLoader.addClassLoaderExclusion("org.openjdk.nashorn.");
+            // JAXB, one copy as the JDK's was on Java 8. FML excludes javax. already; the vanilla profile doesn't.
+            for (String prefix : List.of("javax.xml.bind.", "javax.activation.", "com.sun.xml.bind.", "com.sun.xml.txw2.",
+                    "com.sun.istack.", "com.sun.activation.")) {
+                classLoader.addClassLoaderExclusion(prefix);
+            }
             // LWJGL 3 and Lich's LWJGL 2 API on it: one copy, whatever mods do to LaunchWrapper's own exclusion.
             if (usesLwjgl3()) {
                 LichExclusions.add("org.lwjgl.");

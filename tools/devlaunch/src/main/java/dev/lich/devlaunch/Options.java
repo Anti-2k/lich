@@ -11,6 +11,7 @@ record Options(
         Path versionJson,
         Path java,
         Path runDir,
+        Path gameDir,
         String username,
         String mainClass,
         boolean skipAssets,
@@ -25,6 +26,7 @@ record Options(
               --version-json <file>   local version JSON (may use inheritsFrom), e.g. a Lich profile
               --java <path>           java executable for the game (default: the JVM running devlaunch)
               --run-dir <dir>         cache and game directories live here (default: ./run)
+              --game-dir <dir>        game directory (default: <run-dir>/<version id>)
               --username <name>       offline username (default: Dev)
               --main-class <class>    override the version's main class
               --jvm-arg <arg>         extra JVM argument, repeatable
@@ -39,6 +41,7 @@ record Options(
         Path versionJson = null;
         Path java = null;
         Path runDir = Path.of("run");
+        Path gameDir = null;
         String username = "Dev";
         String mainClass = null;
         boolean skipAssets = false;
@@ -54,6 +57,7 @@ record Options(
                 case "--version-json" -> versionJson = Path.of(value(args, ++i, option));
                 case "--java" -> java = Path.of(value(args, ++i, option));
                 case "--run-dir" -> runDir = Path.of(value(args, ++i, option));
+                case "--game-dir" -> gameDir = Path.of(value(args, ++i, option)).toAbsolutePath().normalize();
                 case "--username" -> username = value(args, ++i, option);
                 case "--main-class" -> mainClass = value(args, ++i, option);
                 case "--jvm-arg" -> jvmArgs.add(value(args, ++i, option));
@@ -75,7 +79,7 @@ record Options(
         if (!Files.isRegularFile(java)) {
             throw new IllegalArgumentException("Java executable not found: " + java);
         }
-        return new Options(version, versionJson, java, runDir.toAbsolutePath().normalize(), username, mainClass,
+        return new Options(version, versionJson, java, runDir.toAbsolutePath().normalize(), gameDir, username, mainClass,
                 skipAssets, dryRun, List.copyOf(jvmArgs), List.copyOf(gameArgs), List.copyOf(extraClasspath));
     }
 

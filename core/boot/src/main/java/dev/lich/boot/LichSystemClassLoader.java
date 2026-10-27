@@ -46,6 +46,14 @@ public final class LichSystemClassLoader extends URLClassLoader {
         registerAsParallelCapable();
     }
 
+    /** The libraries Lich ships for JDK APIs Java 8 had, each by a class it has: Nashorn, then JAXB and its parts. */
+    private static final List<String> SHIPPED_LIBRARIES = List.of(
+            "org/openjdk/nashorn/api/scripting/NashornScriptEngineFactory.class",
+            "javax/xml/bind/JAXBContext.class",
+            "com/sun/xml/bind/v2/ContextFactory.class",
+            "com/sun/xml/txw2/TXW.class",
+            "com/sun/istack/Pool.class",
+            "javax/activation/DataHandler.class");
     private static final List<String> DROPPED = new CopyOnWriteArrayList<>();
     private static final List<URL> LICH_JARS = new CopyOnWriteArrayList<>();
     private static final List<Path> MAPPINGS = new CopyOnWriteArrayList<>();
@@ -91,7 +99,7 @@ public final class LichSystemClassLoader extends URLClassLoader {
         return List.copyOf(MAPPINGS);
     }
 
-    /** Lich's own jars and the libraries it ships (ASM 9, Nashorn, LWJGL 3), which boot hides from mod discovery. */
+    /** Lich's own jars and the libraries it ships (ASM 9, Nashorn, JAXB, LWJGL 3), which boot hides from mod discovery. */
     public static List<URL> lichJars() {
         return List.copyOf(LICH_JARS);
     }
@@ -231,7 +239,7 @@ public final class LichSystemClassLoader extends URLClassLoader {
         OTHER,
         /** Mojang's LaunchWrapper or an ASM older than 9: Lich ships its own, so it's left out. */
         REPLACED,
-        /** One of Lich's jars (by its manifest title), or a library Lich ships: ASM 9, Nashorn. */
+        /** One of Lich's jars (by its manifest title), or a library Lich ships: ASM 9, Nashorn, JAXB. */
         LICH,
         /** The game's LWJGL 2: replaced when the game runs on LWJGL 3. */
         LWJGL2,
@@ -261,9 +269,11 @@ public final class LichSystemClassLoader extends URLClassLoader {
                     && jar.getEntry("dev/lich/launchwrapper/LaunchCore.class") == null) {
                 return Kind.REPLACED;
             }
-            // Java 11+ class files, which FML's mod discovery can't parse either.
-            if (jar.getEntry("org/openjdk/nashorn/api/scripting/NashornScriptEngineFactory.class") != null) {
-                return Kind.LICH;
+            // Nashorn has Java 11+ class files and the JAXB jars a module-info, which FML's mod discovery can't parse.
+            for (String entry : SHIPPED_LIBRARIES) {
+                if (jar.getEntry(entry) != null) {
+                    return Kind.LICH;
+                }
             }
             Manifest manifest = jar.getManifest();
             if (jar.getEntry("org/lwjgl/Sys.class") != null && jar.getEntry("org/lwjgl/system/Library.class") == null

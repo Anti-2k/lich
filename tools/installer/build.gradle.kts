@@ -54,6 +54,10 @@ dependencies {
     add("lich", libs.asm.util)
     // For scripting mods (jdk.nashorn → org.openjdk.nashorn); it runs on the ASM 9 above.
     add("lich", libs.nashorn.core)
+    // JAXB (javax.xml.bind), which Java 8 had and some mods use (PLAN.md §2.3). Not transitive here, so all of it.
+    for (module in listOf(libs.jaxb.api, libs.jaxb.runtime, libs.jaxb.txw2, libs.istack.commons.runtime, libs.activation)) {
+        add("lich", module)
+    }
     // LWJGL 3 replaces the game's LWJGL 2 (compat-lwjgl2 has LWJGL 2's API on it). Every platform's natives go
     // on the class path, where LWJGL 3 finds its own; the system class loader drops LWJGL 2 (PLAN.md §2.5).
     add("lich", project(":compat-lwjgl2"))
