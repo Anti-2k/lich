@@ -1,0 +1,10 @@
+# Mod jars signed with SHA-1, which current JDKs (and Java 8 since 8u351) treat as unsigned, but whose
+# certificates Lich gives back to Forge (LegacySignatures). One jar per line: the SHA-256 of the whole file,
+# then its name and the popular packs it was found in. Only an exact copy matches, so a modified jar stays
+# unsigned. Add a jar only from a well-known pack, after checking its signature with jarsigner -verbose.
+cb264e0777cb934354b06c4c478685645ebb543a8cb13bdf5e0bf52cf7de9b81  EnderTech-1.7.10-0.3.2.405.jar  FTB Infinity Evolved, FTB SkyFactory 2.5, The 1.7.10 Pack
+2c7a4d5ea98f286c84b591c0f4efad564b1dd74a7779d043475794884a3d1ca8  industrialcraft-2-2.2.827-experimental.jar  FTB Infinity Evolved, The 1.7.10 Pack, The Lost Era
+4b9ed398fc798632f5a7783be06d628f44893c8265982e811968c3a3f333f5e9  biggerpacketsplz-upto1.7.10-1.2.jar  The 1.7.10 Pack, The Lost Era
+e4a3dd27370920b2be108ba7a18efe720a521d4956abb34a8ebf74958ff25f55  LunatriusCore-1.7.10-1.1.2.21-universal.jar  Blightfall, FTB SkyFactory 2.5
+a1332303839cf65cdb77335efeeac28133fbc7ead8e8b2e4baedc789c38d0ee8  InGameInfoXML-1.7.10-2.8.1.82-universal.jar  FTB SkyFactory 2.5
+afa24fcc51910fdd4bc07dc9ecb8ef44a8d40666496deb96bf9e14712db2606c  Mercurius-1.7.10-1.0.6.jar  FTB SkyFactory 2.5

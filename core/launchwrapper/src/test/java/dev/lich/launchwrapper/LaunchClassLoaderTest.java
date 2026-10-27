@@ -2,6 +2,7 @@ package dev.lich.launchwrapper;
 
 import dev.lich.launchwrapper.testsupport.RecordingTransformer;
 import net.minecraft.launchwrapper.IClassNameTransformer;
+import net.minecraft.launchwrapper.IClassTransformer;
 import net.minecraft.launchwrapper.ITweaker;
 import net.minecraft.launchwrapper.LaunchClassLoader;
 import org.junit.jupiter.api.Test;
@@ -138,6 +139,23 @@ class LaunchClassLoaderTest {
         ((Set<String>) field.get(loader)).remove("fixture.");
         assertThrows(ClassNotFoundException.class, () -> loader.findClass("fixture.Excluded"),
                 "left to the parent, which doesn't have the fixtures");
+    }
+
+    /** UniMixins generates GTNH's MixinExtras classes; they need the compat pass like any other class. */
+    @Test
+    void lichsFirstTransformersAlsoSeeAClassARegisteredOneMade() throws Exception {
+        List<String> seen = new CopyOnWriteArrayList<>();
+        IClassTransformer first = (name, transformedName, bytes) -> {
+            if (name.equals("fixture.Generated")) {
+                seen.add(bytes == null ? "first: nothing" : "first: generated");
+            }
+            return bytes;
+        };
+        LichTransformers.addFirst(first);
+        LaunchClassLoader loader = newLoader();
+        loader.registerTransformer(SUPPORT + "GeneratingTransformer");
+        assertEquals("generated", callStatic(loader.loadClass("fixture.Generated"), "hello"));
+        assertEquals(List.of("first: nothing", "first: generated"), seen);
     }
 
     private static byte[] record(List<String> seen, String label, String name, byte[] bytes) {

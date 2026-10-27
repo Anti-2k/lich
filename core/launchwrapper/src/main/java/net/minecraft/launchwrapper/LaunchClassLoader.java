@@ -1,9 +1,11 @@
 package net.minecraft.launchwrapper;
 
 import dev.lich.launchwrapper.ImageIoProviders;
+import dev.lich.launchwrapper.LegacySignatures;
 import dev.lich.launchwrapper.LichExclusions;
 import dev.lich.launchwrapper.LichSources;
 import dev.lich.launchwrapper.LichTransformers;
+import dev.lich.launchwrapper.VisibleSources;
 import org.apache.logging.log4j.Level;
 import org.apache.logging.log4j.LogManager;
 
@@ -17,7 +19,6 @@ import java.net.URLConnection;
 import java.nio.file.Files;
 import java.security.CodeSigner;
 import java.security.CodeSource;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Enumeration;
@@ -200,7 +201,7 @@ public class LaunchClassLoader extends URLClassLoader {
                         Package pkg = getDefinedPackage(packageName);
                         // The entry has to be read fully before its code signers are known.
                         getClassBytes(untransformedName);
-                        signers = entry.getCodeSigners();
+                        signers = LegacySignatures.signers(entry.getCodeSigners(), jarFile, fileName);
                         if (pkg == null) {
                             pkg = definePackageOnce(packageName,
                                     () -> definePackage(packageName, manifest, jarURLConnection.getJarFileURL()));
@@ -248,10 +249,13 @@ public class LaunchClassLoader extends URLClassLoader {
      * A class that's excluded from transformers. 1.12 defines it untouched with {@code URLClassLoader}'s
      * {@code findClass}, and so does Lich unless its own first or last transformers change it: FML keeps
      * its own patcher and deobfuscation classes out of transformers, and those call removed JDK APIs and
-     * LWJGL 2 too. A changed class gets the code source {@code URLClassLoader} would have given it.
+     * LWJGL 2 too. A changed class gets the code source {@code URLClassLoader} would have given it. So does a
+     * class from a jar whose SHA-1 signature Lich gives back ({@link LegacySignatures}): a package's classes must
+     * all have the same signers, and {@code URLClassLoader} would define this one unsigned.
      */
     private Class<?> findExcludedClass(final String name) throws ClassNotFoundException {
-        if (LichTransformers.first().isEmpty() && LichTransformers.last().isEmpty()) {
+        final boolean legacySigned = hasLegacySigners(name);
+        if (!legacySigned && LichTransformers.first().isEmpty() && LichTransformers.last().isEmpty()) {
             return super.findClass(name);
         }
         final byte[] bytes;
@@ -262,7 +266,7 @@ public class LaunchClassLoader extends URLClassLoader {
         }
         final byte[] compat = bytes == null ? null
                 : runAll(LichTransformers.last(), name, name, runAll(LichTransformers.first(), name, name, bytes));
-        if (compat == bytes) {
+        if (compat == null || compat == bytes && !legacySigned) {
             return super.findClass(name);
         }
 
@@ -276,7 +280,8 @@ public class LaunchClassLoader extends URLClassLoader {
                 location = jarConnection.getJarFileURL();
                 manifest = jarConnection.getManifest();
                 final JarEntry entry = jarConnection.getJarEntry();
-                signers = entry == null ? null : entry.getCodeSigners();
+                signers = entry == null ? null
+                        : LegacySignatures.signers(entry.getCodeSigners(), jarConnection.getJarFile(), fileName);
             } catch (IOException e) {
                 throw new ClassNotFoundException(name, e);
             }
@@ -293,6 +298,19 @@ public class LaunchClassLoader extends URLClassLoader {
             }
         }
         return defineClass(name, compat, 0, compat.length, new CodeSource(location, signers));
+    }
+
+    /** Whether {@link LegacySignatures} gives the class signers that the JDK doesn't. */
+    private boolean hasLegacySigners(final String name) {
+        final String fileName = name.replace('.', '/').concat(".class");
+        if (findCodeSourceConnectionFor(fileName) instanceof JarURLConnection jarConnection) {
+            try {
+                return LegacySignatures.signers(null, jarConnection.getJarFile(), fileName) != null;
+            } catch (IOException e) {
+                return false;
+            }
+        }
+        return false;
     }
 
     /** Defines a package, or returns the one another thread defined between our lookup and now. */
@@ -379,8 +397,14 @@ public class LaunchClassLoader extends URLClassLoader {
         if (DEBUG_FINER) {
             LogWrapper.finest("Beginning transform of {%s (%s)} Start Length: %d", name, transformedName, basicClass == null ? 0 : basicClass.length);
         }
+        final boolean fromNothing = basicClass == null;
         basicClass = runAll(LichTransformers.first(), name, transformedName, basicClass);
         basicClass = runAll(transformers, name, transformedName, basicClass);
+        // A class no jar has, made by a registered transformer (UniMixins generates GTNH's MixinExtras classes):
+        // Lich's first transformers saw nothing, so they get the class now, before the last ones.
+        if (fromNothing && basicClass != null) {
+            basicClass = runAll(LichTransformers.first(), name, transformedName, basicClass);
+        }
         basicClass = runAll(LichTransformers.last(), name, transformedName, basicClass);
         if (DEBUG_FINER) {
             LogWrapper.finest("Ending transform of {%s (%s)} Start Length: %d", name, transformedName, basicClass == null ? 0 : basicClass.length);
@@ -416,18 +440,8 @@ public class LaunchClassLoader extends URLClassLoader {
     }
 
     public List<URL> getSources() {
-        if (!LichSources.anyHidden()) {
-            return sources;
-        }
-        // A copy: callers that add to the list expected to add to the real one, but none of the
-        // mods that read it do (they call addURL).
-        final List<URL> visible = new ArrayList<>(sources.size());
-        for (final URL source : sources) {
-            if (!LichSources.isHidden(source)) {
-                visible.add(source);
-            }
-        }
-        return visible;
+        // A live view, not a copy: mods write to the list (VisibleSources).
+        return LichSources.anyHidden() ? new VisibleSources(sources) : sources;
     }
 
     public List<IClassTransformer> getTransformers() {

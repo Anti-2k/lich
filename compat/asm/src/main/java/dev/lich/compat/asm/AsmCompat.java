@@ -15,8 +15,11 @@ public final class AsmCompat {
                 // Mixin 0.7 shades ASM 5.2 as org.spongepowered.asm.lib, whose ClassReader rejects anything
                 // newer than Java 8, and Mixin reads JDK classes for its class metadata. Mixin and every mod
                 // that touches Mixin's ASM types (config plugins) use Lich's ASM 9 instead, unless the
-                // relocated copy is a current ASM already (UniMixins), which must stay as it is.
+                // relocated copy is an ASM 9 already (UniMixins), which must stay as it is; an older ASM 9
+                // there only gets its class file version limit raised.
                 .renamePackage("org/spongepowered/asm/lib/", "org/objectweb/asm/", MixinShadedAsm::isTooOld)
+                .patch(ShadedAsmClassReader.CLASS, new ShadedAsmClassReader())
+                .patch(ShadedAsmOpcodes.CLASS, new ShadedAsmOpcodes())
                 .redirect("org/objectweb/asm/Type", "getType", "(Ljava/lang/String;)Lorg/objectweb/asm/Type;",
                         SHIMS + "Asm5Types")
                 .redirect("org/objectweb/asm/Type", "getReturnType", "(Ljava/lang/String;)Lorg/objectweb/asm/Type;",
@@ -40,7 +43,11 @@ public final class AsmCompat {
                 .rebase("org/objectweb/asm/tree/analysis/SimpleVerifier", SHIMS + "Asm5SimpleVerifier")
                 .rebase("org/objectweb/asm/tree/analysis/SourceInterpreter", SHIMS + "Asm5SourceInterpreter")
                 .rebase("org/objectweb/asm/util/CheckMethodAdapter", SHIMS + "Asm5CheckMethodAdapter")
-                .rebase("org/objectweb/asm/commons/TryCatchBlockSorter", SHIMS + "Asm5TryCatchBlockSorter");
+                .rebase("org/objectweb/asm/commons/TryCatchBlockSorter", SHIMS + "Asm5TryCatchBlockSorter")
+                // Mods hash Textifier's text to recognize code (Logistics Pipes); ASM 6+ prints some instructions
+                // differently.
+                .rebase("org/objectweb/asm/util/Textifier", SHIMS + "Asm5Textifier")
+                .replaceInstantiations("org/objectweb/asm/util/Textifier", SHIMS + "Asm5Textifier");
     }
 
     /**
