@@ -27,15 +27,17 @@ import java.util.zip.ZipFile;
 import java.util.zip.ZipInputStream;
 
 /**
- * Turns a pinned {@link Pack} into a ready game directory, {@code run/packs/<pack>/minecraft}: the {@code .mrpack}
- * index's client files and overrides, as a launcher installs them. Packs that leave their mods to McInstanceLoader get
- * those resolved here instead (its {@code resources.packconfig}), and the loader itself is left out: it would
- * download them again at the first launch, through a third-party CurseForge proxy with certificate checks turned off.
- * Optional resources are left out too, as a fresh install does by default.
+ * Turns a pinned {@link Pack} into a ready game directory, {@code run/packs/<pack>/minecraft}, the way the pack's own
+ * launcher installs it: a {@code .mrpack}'s client files and overrides; a Technic build's mod zips unpacked in order
+ * (without {@code bin/}, which holds the Forge the dev profile provides); an FTB version's client files. Packs that leave their mods to McInstanceLoader get those resolved here instead (its {@code
+ * resources.packconfig}), and the loader itself is left out: it would download them again at the first launch,
+ * through a third-party CurseForge proxy with certificate checks turned off. Optional files are left out, as a fresh
+ * install does by default.
  */
 final class PackInstaller {
     private static final String DONE = ".lich-pack";
     private static final String MCINSTANCE = "config/mcinstanceloader/pack.mcinstance";
+    private static final String FTB_API = "https://api.feed-the-beast.com/v1/modpacks/public/modpack/";
 
     private final Http http;
     private final Path runDir;
@@ -45,7 +47,7 @@ final class PackInstaller {
         this.runDir = runDir;
     }
 
-    /** The pack's game directory template, built once per pinned pack file. */
+    /** The pack's game directory template, built once per pinned pack. */
     Path install(Pack pack) throws IOException {
         Path root = runDir.resolve("packs").resolve(pack.id());
         Path template = root.resolve("minecraft");
@@ -59,26 +61,12 @@ final class PackInstaller {
         deleteTree(template);
         Files.createDirectories(template);
 
-        Path mrpack = http.fetch(pack.url(), pack.id() + ".mrpack", pack.sha512());
         Map<String, String> manifest = new TreeMap<>();
-        try (ZipFile zip = new ZipFile(mrpack.toFile())) {
-            JsonObject index = JsonParser.parseString(read(zip, "modrinth.index.json")).getAsJsonObject();
-            List<Download> downloads = new ArrayList<>();
-            for (JsonElement element : index.getAsJsonArray("files")) {
-                JsonObject file = element.getAsJsonObject();
-                JsonObject env = file.getAsJsonObject("env");
-                if (env != null && env.has("client") && env.get("client").getAsString().equals("unsupported")) {
-                    continue;
-                }
-                JsonArray urls = file.getAsJsonArray("downloads");
-                downloads.add(new Download(file.get("path").getAsString(), urls.get(0).getAsString(),
-                        file.getAsJsonObject("hashes").get("sha512").getAsString()));
-            }
-            log(pack.name() + ": " + downloads.size() + " files from the .mrpack index");
-            downloadAll(downloads, template, manifest);
-            // Client overrides win over the shared ones (the .mrpack format's rule).
-            extract(zip, "overrides/", template, manifest);
-            extract(zip, "client-overrides/", template, manifest);
+        switch (pack.source().type()) {
+            case "mrpack" -> installMrpack(pack, template, manifest);
+            case "solder" -> installSolder(pack, template, manifest);
+            case "ftb" -> installFtb(pack, template, manifest);
+            default -> throw new IOException("Unknown pack source type " + pack.source().type());
         }
 
         Path mcInstance = template.resolve(MCINSTANCE);
@@ -95,6 +83,130 @@ final class PackInstaller {
         log(pack.name() + ": " + manifest.size() + " files, " + mods + " mod jars, in " + template);
         return template;
     }
+
+    /** A Modrinth {@code .mrpack}: its index's client files, then its overrides. */
+    private void installMrpack(Pack pack, Path template, Map<String, String> manifest) throws IOException {
+        Pack.Source source = pack.source();
+        Path mrpack = http.fetch(source.get("url"), pack.id() + ".mrpack", Http.Hash.sha512(source.get("sha512")));
+        try (ZipFile zip = new ZipFile(mrpack.toFile())) {
+            JsonObject index = JsonParser.parseString(read(zip, "modrinth.index.json")).getAsJsonObject();
+            List<Download> downloads = new ArrayList<>();
+            for (JsonElement element : index.getAsJsonArray("files")) {
+                JsonObject file = element.getAsJsonObject();
+                JsonObject env = file.getAsJsonObject("env");
+                if (env != null && env.has("client") && env.get("client").getAsString().equals("unsupported")) {
+                    continue;
+                }
+                JsonArray urls = file.getAsJsonArray("downloads");
+                downloads.add(new Download(file.get("path").getAsString(), urls.get(0).getAsString(),
+                        Http.Hash.sha512(file.getAsJsonObject("hashes").get("sha512").getAsString())));
+            }
+            log(pack.name() + ": " + downloads.size() + " files from the .mrpack index");
+            downloadAll(downloads, template, manifest);
+            // Client overrides win over the shared ones (the .mrpack format's rule).
+            extract(zip, "overrides/", template, manifest);
+            extract(zip, "client-overrides/", template, manifest);
+        }
+    }
+
+    /**
+     * A Technic pack build from its Solder API: every mod is a zip of game-directory files, unpacked in the build's
+     * order as the Technic launcher does (later ones win). {@code bin/} is skipped, after checking that the Forge its
+     * {@code modpack.jar} names is the pack's: the dev profile provides that Forge.
+     */
+    private void installSolder(Pack pack, Path template, Map<String, String> manifest) throws IOException {
+        Pack.Source source = pack.source();
+        String api = source.get("api");
+        JsonObject build = JsonParser.parseString(http.getString(api + (api.endsWith("/") ? "" : "/") + "modpack/"
+                + source.get("slug") + "/" + source.get("build"))).getAsJsonObject();
+        String minecraft = build.get("minecraft").getAsString();
+        if (!pack.mc().equals(minecraft)) {
+            throw new IOException(pack.name() + " is for Minecraft " + minecraft + ", not " + pack.mc());
+        }
+        List<Download> zips = new ArrayList<>();
+        for (JsonElement element : build.getAsJsonArray("mods")) {
+            JsonObject mod = element.getAsJsonObject();
+            String url = mod.get("url").getAsString();
+            zips.add(new Download(url.substring(url.lastIndexOf('/') + 1), url, Http.Hash.md5(mod.get("md5").getAsString())));
+        }
+        log(pack.name() + ": " + zips.size() + " mod zips from Solder");
+        List<Path> cached = fetchAll(zips);
+        boolean forgeChecked = false;
+        for (int i = 0; i < zips.size(); i++) {
+            try (ZipFile zip = new ZipFile(cached.get(i).toFile())) {
+                for (ZipEntry entry : zip.stream().toList()) {
+                    if (entry.isDirectory()) {
+                        continue;
+                    }
+                    if (entry.getName().startsWith("bin/")) {
+                        if (entry.getName().equals("bin/modpack.jar")) {
+                            checkForge(pack, zip, entry);
+                            forgeChecked = true;
+                        }
+                        continue;
+                    }
+                    Path target = Paths.inside(template, entry.getName());
+                    Files.createDirectories(target.getParent());
+                    try (InputStream in = zip.getInputStream(entry)) {
+                        Files.copy(in, target, StandardCopyOption.REPLACE_EXISTING);
+                    }
+                    manifest.put(entry.getName(), zips.get(i).url());
+                }
+            }
+        }
+        if (!forgeChecked) {
+            throw new IOException(pack.name() + " has no bin/modpack.jar naming its Forge");
+        }
+    }
+
+    /** The Forge a Technic pack's {@code bin/modpack.jar} names must be the one the dev profile runs. */
+    private static void checkForge(Pack pack, ZipFile zip, ZipEntry modpackJar) throws IOException {
+        try (ZipInputStream jar = new ZipInputStream(zip.getInputStream(modpackJar))) {
+            for (ZipEntry entry; (entry = jar.getNextEntry()) != null; ) {
+                if (entry.getName().equals("version.json")) {
+                    String id = JsonParser.parseString(new String(jar.readAllBytes(), StandardCharsets.UTF_8))
+                            .getAsJsonObject().get("id").getAsString();
+                    if (!id.contains(pack.forge())) {
+                        throw new IOException(pack.name() + " runs " + id + ", not Forge " + pack.forge());
+                    }
+                    return;
+                }
+            }
+        }
+        throw new IOException(pack.name() + "'s bin/modpack.jar has no version.json");
+    }
+
+    /** An FTB pack version from FTB's API: its client files (not server-only or optional ones), each with a SHA-1. */
+    private void installFtb(Pack pack, Path template, Map<String, String> manifest) throws IOException {
+        Pack.Source source = pack.source();
+        JsonObject version = JsonParser.parseString(
+                http.getString(FTB_API + source.get("pack") + "/" + source.get("version"))).getAsJsonObject();
+        for (JsonElement element : version.getAsJsonArray("targets")) {
+            JsonObject target = element.getAsJsonObject();
+            String name = target.get("name").getAsString();
+            String expected = name.equals("minecraft") ? pack.mc() : name.equals("forge") ? pack.forge() : null;
+            if (expected != null && !expected.equals(target.get("version").getAsString())) {
+                throw new IOException(pack.name() + " needs " + name + " " + target.get("version").getAsString()
+                        + ", not " + expected);
+            }
+        }
+        List<Download> downloads = new ArrayList<>();
+        int skipped = 0;
+        for (JsonElement element : version.getAsJsonArray("files")) {
+            JsonObject file = element.getAsJsonObject();
+            if (file.get("serveronly").getAsBoolean() || file.get("optional").getAsBoolean()) {
+                skipped++;
+                continue;
+            }
+            String dir = file.get("path").getAsString();
+            dir = dir.startsWith("./") ? dir.substring(2) : dir;
+            downloads.add(new Download(dir + file.get("name").getAsString(), file.get("url").getAsString(),
+                    Http.Hash.sha1(file.get("sha1").getAsString())));
+        }
+        log(pack.name() + ": " + downloads.size() + " files from FTB (" + skipped + " server-only or optional left out)");
+        downloadAll(downloads, template, manifest);
+    }
+
 
     private void installMcInstance(Path mcInstance, Path template, Map<String, String> manifest) throws IOException {
         byte[] archive = Files.readAllBytes(mcInstance);
@@ -138,7 +250,7 @@ final class PackInstaller {
             }
             String destination = resource.get("destination");
             switch (resource.get("type")) {
-                case "url" -> downloads.add(new Download(destination, resource.get("url"), resource.get("SHA512")));
+                case "url" -> downloads.add(new Download(destination, resource.get("url"), Http.Hash.sha512(resource.get("SHA512"))));
                 case "modrinth" -> downloads.add(modrinth(resource, destination));
                 default -> throw new IOException("Unknown resource type in " + resource.name() + ": " + resource.get("type"));
             }
@@ -176,6 +288,16 @@ final class PackInstaller {
             }
             log("Setup: unpacked " + archive);
         }
+        for (Map.Entry<String, String> dir : pack.copy().entrySet()) {
+            Path from = Paths.inside(template, dir.getValue());
+            Path to = Paths.inside(template, dir.getKey());
+            if (!Files.isDirectory(from)) {
+                throw new IOException("Setup: no " + dir.getValue() + " to copy");
+            }
+            Paths.copyTree(from, to);
+            manifest.put(dir.getKey() + "/", "setup: copied from " + dir.getValue() + "/");
+            log("Setup: copied " + dir.getValue() + " to " + dir.getKey());
+        }
         for (Map.Entry<String, String> file : pack.write().entrySet()) {
             Path target = Paths.inside(template, file.getKey());
             Files.createDirectories(target.getParent());
@@ -201,33 +323,40 @@ final class PackInstaller {
             throw new IOException("No file in Modrinth version " + resource.get("versionId") + " for " + resource.name());
         }
         return new Download(destination, chosen.get("url").getAsString(),
-                chosen.getAsJsonObject("hashes").get("sha512").getAsString());
+                Http.Hash.sha512(chosen.getAsJsonObject("hashes").get("sha512").getAsString()));
     }
 
     private void downloadAll(List<Download> downloads, Path template, Map<String, String> manifest) throws IOException {
+        List<Path> cached = fetchAll(downloads);
+        for (int i = 0; i < downloads.size(); i++) {
+            Download d = downloads.get(i);
+            Path target = Paths.inside(template, d.path());
+            Files.createDirectories(target.getParent());
+            Files.copy(cached.get(i), target, StandardCopyOption.REPLACE_EXISTING);
+            manifest.put(d.path(), d.url() + (d.hash() == null ? "  (no hash given)" : ""));
+        }
+    }
+
+    /** Downloads into the cache, 8 at a time; returns the cached files in the same order. */
+    private List<Path> fetchAll(List<Download> downloads) throws IOException {
         try (ExecutorService pool = Executors.newFixedThreadPool(8)) {
             List<Future<Path>> results = new ArrayList<>();
             for (Download d : downloads) {
-                results.add(pool.submit(() -> {
-                    Path target = Paths.inside(template, d.path());
-                    Path cached = http.fetch(d.url(), target.getFileName().toString(), d.sha512());
-                    Files.createDirectories(target.getParent());
-                    Files.copy(cached, target, StandardCopyOption.REPLACE_EXISTING);
-                    return target;
-                }));
+                String fileName = d.path().substring(d.path().lastIndexOf('/') + 1);
+                results.add(pool.submit(() -> http.fetch(d.url(), fileName, d.hash())));
             }
+            List<Path> cached = new ArrayList<>();
             for (int i = 0; i < downloads.size(); i++) {
                 try {
-                    results.get(i).get();
+                    cached.add(results.get(i).get());
                 } catch (java.util.concurrent.ExecutionException e) {
                     throw new IOException("Downloading " + downloads.get(i).url() + " failed", e.getCause());
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                     throw new java.io.InterruptedIOException();
                 }
-                Download d = downloads.get(i);
-                manifest.put(d.path(), d.url() + (d.sha512() == null ? "  (no hash given)" : ""));
             }
+            return cached;
         }
     }
 
@@ -283,7 +412,7 @@ final class PackInstaller {
         }
     }
 
-    private record Download(String path, String url, String sha512) {
+    private record Download(String path, String url, Http.Hash hash) {
     }
 
     private static void log(String message) {

@@ -53,7 +53,7 @@ final class PrismInstances {
                 "MaxMemAlloc=" + pack.memoryMb(),
                 "MinMemAlloc=512",
                 "PermGen=128",
-                "notes=Made by Lich's test harness from " + pack.url()), StandardCharsets.UTF_8);
+                "notes=Made by Lich's test harness from " + pack.source().describe()), StandardCharsets.UTF_8);
         Files.writeString(dir.resolve("mmc-pack.json"), """
                 {
                     "components": [

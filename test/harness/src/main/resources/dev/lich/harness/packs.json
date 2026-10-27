@@ -3,16 +3,75 @@
     "name": "The Lost Era 1.6.10",
     "mc": "1.7.10",
     "forge": "10.13.4.1614",
-    "url": "https://cdn.modrinth.com/data/p87Jiw2q/versions/OdtinaRg/LostEra_Modpack-1.6.10.mrpack",
-    "sha512": "ff14ee19164cef6d7eb6d150aa6c319d6baea7a1928b389b8d0d9e72df947a7313645f28d61032e2a0b675d4c9f676c716fc77d24ddeb3674674cbeda266c4ee",
-    "memoryMb": 6144
+    "source": {
+      "type": "mrpack",
+      "url": "https://cdn.modrinth.com/data/p87Jiw2q/versions/OdtinaRg/LostEra_Modpack-1.6.10.mrpack",
+      "sha512": "ff14ee19164cef6d7eb6d150aa6c319d6baea7a1928b389b8d0d9e72df947a7313645f28d61032e2a0b675d4c9f676c716fc77d24ddeb3674674cbeda266c4ee"
+    },
+    "memoryMb": 6144,
+    "worldType": "RTG"
+  },
+  "blightfall": {
+    "name": "Blightfall 3.1.1-CE",
+    "mc": "1.7.10",
+    "forge": "10.13.4.1614",
+    "source": {
+      "type": "solder",
+      "api": "https://solder.technicpack.net/api/",
+      "slug": "blightfall",
+      "build": "3.1.1-CE"
+    },
+    "memoryMb": 4096,
+    "setup": {
+      "copy": {
+        "saves/Blightfall": "flans"
+      }
+    },
+    "save": "Blightfall"
+  },
+  "the-1710-pack": {
+    "name": "The 1.7.10 Pack 0.10.15",
+    "mc": "1.7.10",
+    "forge": "10.13.4.1614",
+    "source": {
+      "type": "solder",
+      "api": "https://solder.technicpack.net/api/",
+      "slug": "the-1710-pack",
+      "build": "0.10.15"
+    },
+    "memoryMb": 4096
+  },
+  "ftb-infinity-evolved": {
+    "name": "FTB Infinity Evolved 3.1.0",
+    "mc": "1.7.10",
+    "forge": "10.13.4.1614",
+    "source": {
+      "type": "ftb",
+      "pack": "23",
+      "version": "99"
+    },
+    "memoryMb": 4096
+  },
+  "ftb-skyfactory-2.5": {
+    "name": "FTB Presents SkyFactory 2.5.8",
+    "mc": "1.7.10",
+    "forge": "10.13.4.1614",
+    "source": {
+      "type": "ftb",
+      "pack": "19",
+      "version": "97"
+    },
+    "memoryMb": 4096
   },
   "skyblock-enhanced": {
     "name": "SkyBlock Enhanced 2.3.21",
     "mc": "1.8.9",
     "forge": "11.15.1.2318",
-    "url": "https://cdn.modrinth.com/data/9JTbeXjU/versions/zG48O4Km/SkyBlock%20Enhanced-2.3.21.mrpack",
-    "sha512": "19bc18020c09cb1e10a0711fb90c08f5379b34011bf6578251271cff01ed7bc80770cf37a9f755ae115f4970f0e4efa2cf2f1a353de24aceaa50e1d015b79f51",
+    "source": {
+      "type": "mrpack",
+      "url": "https://cdn.modrinth.com/data/9JTbeXjU/versions/zG48O4Km/SkyBlock%20Enhanced-2.3.21.mrpack",
+      "sha512": "19bc18020c09cb1e10a0711fb90c08f5379b34011bf6578251271cff01ed7bc80770cf37a9f755ae115f4970f0e4efa2cf2f1a353de24aceaa50e1d015b79f51"
+    },
     "memoryMb": 4096,
     "setup": {
       "unzip": ["Skyblock Enhanced/OfficialConfigs/Normal 1080p Configs.zip"],
@@ -20,5 +79,38 @@
         "config/PackCore.json": "{\n  \"PromptSetDefaultConfig\": false,\n  \"ShowOptifineGuide\": true,\n  \"EnableCustomMenu\": true\n}\n"
       }
     }
+  },
+  "bedwars-plus": {
+    "name": "BedWars+ v1.5.0-r",
+    "mc": "1.8.9",
+    "forge": "11.15.1.2318",
+    "source": {
+      "type": "mrpack",
+      "url": "https://cdn.modrinth.com/data/TqN4Acfn/versions/SHQpGxmB/BedWars%2B%20v1.5.0-r.mrpack",
+      "sha512": "d1bcc366b9b4507c7e2f7f51f8aa07aeca23e27bd2dcb149ac9226ba38001568ee648cc255e158593b95bc108355c6ce1486d4deb0e60802a92925d5c831af14"
+    },
+    "memoryMb": 3072
+  },
+  "everest-client": {
+    "name": "Everest Client 2.0.4",
+    "mc": "1.8.9",
+    "forge": "11.15.1.2318",
+    "source": {
+      "type": "mrpack",
+      "url": "https://cdn.modrinth.com/data/M8vElGcL/versions/63S4mOxL/Everest%20Client%202.0.4.mrpack",
+      "sha512": "2791a8dc573a178c4905b79628504b2df2bccda5ceded8d278593ba9cb509f18e7840daa4c3636c6671f191660099085830de4b698f45925b0ca5054eadfa8a7"
+    },
+    "memoryMb": 3072
+  },
+  "pvp-pack-1.8": {
+    "name": "1.8 PvP Pack v6-hotfix",
+    "mc": "1.8.9",
+    "forge": "11.15.1.2318",
+    "source": {
+      "type": "mrpack",
+      "url": "https://cdn.modrinth.com/data/9C9Ggaka/versions/UmTbNCcZ/1.8%20PvP%20Pack%20Version%206%20-%20hotfix.mrpack",
+      "sha512": "ba0427cd9ebef4e0ef138e77ccb73c012eaa6b35ca2815e90c5c521b3e01adbe60ef14daffeeffd0b95d293207ad573814bea2ed701bf7b6b960103965363a22"
+    },
+    "memoryMb": 3072
   }
 }
