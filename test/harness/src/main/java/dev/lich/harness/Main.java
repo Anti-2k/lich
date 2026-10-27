@@ -9,7 +9,8 @@ import java.util.List;
 
 /**
  * Lich's test harness, so far for Forge mod compatibility through whole modpacks (PLAN.md §7): one pinned pack run in
- * the Forge baseline on Java 8 and through Lich on Java 25, then the two logs compared.
+ * the Forge baseline on Java 8 and through Lich on Java 25, joined to the test server or in a singleplayer world, then
+ * the two logs compared.
  */
 public final class Main {
     private static final String USAGE = """
@@ -17,6 +18,8 @@ public final class Main {
               fetch <pack>     download the pack into <run-dir>/packs/<pack>/minecraft
               prism <pack>     create the Prism instances <pack>-forge-<mc> and <pack>-lich-<mc> from it
               run <pack>       run it in each profile, joined to the local test server, and write a report
+              world <pack>     play a singleplayer world in each profile (create, tour, hold, save, reopen), and
+                               write a report
             Options:
               --run-dir <dir>       Lich's run directory (cache, test servers, harness output)
               --java8-home <dir>    the JDK 8 the Forge baseline and the test server run on
@@ -24,7 +27,8 @@ public final class Main {
               --mc <version>        the version the dev profiles were installed for; must match the pack (run)
               --profiles <list>     devlaunch profiles to run, comma-separated (default forge,lich-forge)
               --hold <seconds>      how long each profile stays in the world (default 60)
-              --timeout <seconds>   how long a profile may take to join (default 1200)
+              --timeout <seconds>   how long a profile may take to join (run), or go without a step of the
+                                    world driver (world) (default 1200)
             """;
 
     private Main() {
@@ -101,35 +105,48 @@ public final class Main {
                 return 0;
             }
             case "run" -> {
-                if (mc != null && !mc.equals(pack.mc())) {
-                    throw new IllegalArgumentException(pack.name() + " is for Minecraft " + pack.mc()
-                            + "; pass -Plich.mc=" + pack.mc() + " so the matching dev profiles get installed");
-                }
-                return runProfiles(pack, template, runDir, java8, java25Home.resolve("bin").resolve(exe("java")), profiles, hold, timeout);
+                checkVersion(pack, mc);
+                return runProfiles(pack, template, runDir, java8, java25Home.resolve("bin").resolve(exe("java")), GameRun.Mode.SERVER,
+                        profiles, hold, timeout);
+            }
+            case "world" -> {
+                checkVersion(pack, mc);
+                return runProfiles(pack, template, runDir, java8, java25Home.resolve("bin").resolve(exe("java")), GameRun.Mode.WORLD,
+                        profiles, hold, timeout);
             }
             default -> throw new IllegalArgumentException("Unknown command " + command + "\n\n" + USAGE);
         }
     }
 
-    private static int runProfiles(Pack pack, Path template, Path runDir, Path java8, Path java25, List<String> profiles,
-                                   Duration hold, Duration timeout) throws IOException, InterruptedException {
+    private static void checkVersion(Pack pack, String mc) {
+        if (mc != null && !mc.equals(pack.mc())) {
+            throw new IllegalArgumentException(pack.name() + " is for Minecraft " + pack.mc()
+                    + "; pass -Plich.mc=" + pack.mc() + " so the matching dev profiles get installed");
+        }
+    }
+
+    private static int runProfiles(Pack pack, Path template, Path runDir, Path java8, Path java25, GameRun.Mode mode,
+                                   List<String> profiles, Duration hold, Duration timeout) throws IOException, InterruptedException {
         Path out = runDir.resolve("harness").resolve(pack.id());
         Files.createDirectories(out);
         GameRun runner = new GameRun(runDir, java8, java25);
         List<GameRun.Result> results = new ArrayList<>();
         List<LogReport> logs = new ArrayList<>();
-        try (TestServer server = TestServer.start(runDir, pack.mc(), java8, out.resolve("server.out"))) {
+        // A world run needs no test server.
+        try (TestServer server = mode == GameRun.Mode.SERVER ? TestServer.start(runDir, pack.mc(), java8, out.resolve("server.out")) : null) {
             for (String profile : profiles) {
-                GameRun.Result result = runner.run(pack, template, profile, server, hold, timeout);
+                GameRun.Result result = mode == GameRun.Mode.SERVER
+                        ? runner.joinServer(pack, template, profile, server, hold, timeout)
+                        : runner.playWorld(pack, template, profile, hold, timeout);
                 System.out.println("[harness] " + profile + ": " + result.outcome().text
                         + (result.detail().isEmpty() ? "" : " (" + result.detail() + ")"));
                 results.add(result);
                 logs.add(LogReport.read(result.gameDir().resolve("logs").resolve("latest.log"), result.gameDir()));
             }
         }
-        Path report = Report.write(out.resolve("report.md"), pack, PackInstaller.countMods(template), results, logs);
+        Path report = Report.write(out.resolve(mode.reportName), pack, mode, PackInstaller.countMods(template), results, logs);
         System.out.println("[harness] Report: " + report);
-        return results.stream().allMatch(r -> r.outcome() == GameRun.Outcome.STAYED) ? 0 : 1;
+        return results.stream().allMatch(r -> r.outcome().passed) ? 0 : 1;
     }
 
     private static String exe(String name) {

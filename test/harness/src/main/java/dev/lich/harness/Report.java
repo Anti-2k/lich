@@ -7,13 +7,16 @@ import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeSet;
 
 /**
- * The Markdown report of a harness run: each profile's outcome, then what the Lich run logged that the Forge baseline
- * didn't (the part to read), what only the baseline logged, and mixins applied on one side only.
+ * The Markdown report of a harness run: each profile's outcome (and for a world run, the driver's numbers per phase),
+ * then what the Lich run logged that the Forge baseline didn't (the part to read), what only the baseline logged, and
+ * mixins applied on one side only.
  */
 final class Report {
     private static final int MAX_LINES = 300;
@@ -21,15 +24,15 @@ final class Report {
     private Report() {
     }
 
-    static Path write(Path file, Pack pack, long modJars, List<GameRun.Result> results, List<LogReport> logs) throws IOException {
+    static Path write(Path file, Pack pack, GameRun.Mode mode, long modJars, List<GameRun.Result> results, List<LogReport> logs)
+            throws IOException {
         List<String> out = new ArrayList<>();
         out.add("# " + pack.name() + ": harness run");
         out.add("");
         out.add(LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")) + ". Minecraft " + pack.mc()
-                + ", Forge " + pack.forge() + ", " + modJars + " mod jars. Each profile joins the local test server and "
-                + "stays in the world.");
+                + ", Forge " + pack.forge() + ", " + modJars + " mod jars. Each profile " + mode.description + ".");
         out.add("");
-        out.add("| Profile | Result | Mods loaded | Main menu | Joined | Warnings + errors | Mixins applied |");
+        out.add("| Profile | Result | Mods loaded | Main menu | " + mode.joinColumn + " | Warnings + errors | Mixins applied |");
         out.add("|---|---|---|---|---|---|---|");
         for (int i = 0; i < results.size(); i++) {
             GameRun.Result r = results.get(i);
@@ -39,6 +42,9 @@ final class Report {
                     + " | " + GameRun.seconds(r.toJoin()) + " | " + log.problemCount() + " | " + log.mixins().size() + " |");
         }
         out.add("");
+        if (mode == GameRun.Mode.WORLD) {
+            worldStats(out, results);
+        }
 
         int baseline = indexOf(results, "forge");
         int lich = indexOf(results, "lich-forge");
@@ -65,6 +71,40 @@ final class Report {
         }
         Files.write(file, out, StandardCharsets.UTF_8);
         return file;
+    }
+
+    /**
+     * The overworld after each phase of the driver, side by side. Chunk and entity counts depend on timing, so only
+     * large differences mean something; mspt is the integrated server's mean tick time.
+     */
+    private static void worldStats(List<String> out, List<GameRun.Result> results) {
+        Set<String> phases = new LinkedHashSet<>();
+        results.forEach(r -> phases.addAll(r.stats().keySet()));
+        if (phases.isEmpty()) {
+            return;
+        }
+        out.add("## World");
+        out.add("");
+        out.add("Loaded chunks / entities / tile entities / mean tick time in the overworld after each phase.");
+        out.add("");
+        StringBuilder header = new StringBuilder("| Phase |");
+        StringBuilder rule = new StringBuilder("|---|");
+        for (GameRun.Result r : results) {
+            header.append(' ').append(r.profile()).append(" |");
+            rule.append("---|");
+        }
+        out.add(header.toString());
+        out.add(rule.toString());
+        for (String phase : phases) {
+            StringBuilder row = new StringBuilder("| " + phase + " |");
+            for (GameRun.Result r : results) {
+                Map<String, String> s = r.stats().get(phase);
+                row.append(' ').append(s == null ? "-" : s.getOrDefault("chunks", "?") + " / " + s.getOrDefault("entities", "?")
+                        + " / " + s.getOrDefault("tileEntities", "?") + " / " + s.getOrDefault("mspt", "?") + " ms").append(" |");
+            }
+            out.add(row.toString());
+        }
+        out.add("");
     }
 
     private static int indexOf(List<GameRun.Result> results, String profile) {

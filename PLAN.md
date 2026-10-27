@@ -66,6 +66,7 @@ Never redistribute Minecraft or patched Forge binaries. Patch at load time, or o
 | `java.util.jar.Pack200` | 14 | FML `ClassPatchManager` (`binpatches.pack.lzma`) | **Done (Phase 3):** a Pack200 shim at runtime (§4.5), not install-time pre-patching |
 | JSR-250 `javax.annotation.Resource` | 11 (JEP 320) | Mixin 0.7's `LegacyTransformerHandle` (fatal at launch with any Mixin mod) | **Done (Phase 4):** renamed to a look-alike annotation in `compat-jdk` |
 | JAXB `javax.xml.bind` (`DatatypeConverter`, `JAXBContext`) | 11 | Mods doing base64/hex; Enhanced Loot Bags reads its XML config with it (The Lost Era) | **Done (2026-10-27):** Lich ships JAXB 2.3 (the last line with the `javax.xml.bind` package: `jakarta.xml.bind-api` 2.3.3, `jaxb-runtime`/`txw2` 2.3.9, `istack-commons-runtime` 3.0.12, `jakarta.activation` 1.2.2), hidden from mod discovery (the jars have a `module-info`) and class-loader-excluded, so there's one copy as there was in the JDK. The runtime registers itself through `META-INF/services`, which `JAXBContext` finds through the context class loader |
+| `javax.activity.InvalidActivityException` (CORBA) | 11 (JEP 320) | LiteLoader 1.7.10 (`LiteLoader.getMod`; fatal at its bootstrap): Blightfall, The 1.7.10 Pack | **Done (2026-10-27):** renamed to a look-alike in `compat-jdk` (same superclass, `RemoteException`, and constructors) |
 | Nashorn `jdk.nashorn.*` | 15 | Scripting mods: Fisk's Superheroes (hero packs in JS) | **Done (Phase 4):** Lich ships `nashorn-core` 15.7 (on its ASM 9, hidden from mod discovery, a class loader exclusion) and the compat pass renames `jdk/nashorn/` → `org/openjdk/nashorn/`, plus the class names mods pass to `Class.forName`. Its engines load game classes through the context class loader (LaunchClassLoader) |
 | `sun.misc.BASE64Encoder/Decoder` | 9 | Old mods/libs | Redirect to shim |
 | `sun.reflect.Reflection.getCallerClass` | 9 | log4j 2.0-beta9 (has a fallback), mods | Shim on `StackWalker` |
@@ -217,6 +218,37 @@ Never redistribute Minecraft or patched Forge binaries. Patch at load time, or o
   With any OneConfig mod, OneConfig's loader touches ImageIO at launch and the game exits. The caller is in
   OneConfig's own class loader, out of the compat pass's reach, so `LaunchClassLoader.getResources` (the context
   class loader ImageIO uses) serves those lists without the classes it can't find (`ImageIoProviders`).
+- **SHA-1-signed mod jars count as unsigned** (found 2026-10-27, FTB Infinity Evolved): `jdk.jar.disabledAlgorithms`
+  has `SHA1 denyAfter 2019-01-01` (Java 8 too since 8u351, so a current Java 8 fails the same way; the packs' own
+  launchers ship older ones). Forge hands a mod its classes' certificates, mods compare them with their fingerprint,
+  and EnderTech stops the game when they're missing. The JDK rule stays: `LegacySignatures` gives the certificates
+  back only for jars pinned by the SHA-256 of the whole file (`legacy-signed-jars.txt`: IC2, EnderTech, Bigger
+  Packets, LunatriusCore, InGameInfoXML, Mercurius, each from a well-known pack and checked to verify in full with
+  SHA-1 allowed), so a modified jar stays unsigned. Transformer-excluded classes from those jars are defined by Lich
+  too, because a package's classes must all have the same signers.
+- **Writes to `LaunchClassLoader.getSources()`** (found 2026-10-27, Blightfall): GTNH's `MinecraftURLClassPath.addJar`
+  (UniMixins, TC NEI Additions' mixins) adds a jar with `addURL`, then removes it from the sources so FML's mod
+  discovery doesn't find it twice. Lich's `getSources()` hides Lich's jars and returned a copy, so the removal was
+  lost and FML stopped on "Found a duplicate mod". It's a live view now (`VisibleSources`).
+- **JDK-internal ImageIO**: Decocraft's model loader (CraftStudio) constructs `com.sun.imageio.plugins.png.PNGImageReader`;
+  one more `--add-exports` in `jvm-flags.txt` (FTB SkyFactory 2.5).
+- **Mods that hash ASM's text output** (found 2026-10-27, FTB Infinity Evolved): Logistics Pipes recognizes Thermal
+  Dynamics' item duct renderer by a SHA-1 of `Textifier`'s dump of one method, and stops the game when it doesn't
+  know the hash. ASM 6+ prints interface calls with `(itf)` and number constants with a type suffix, so under Lich's
+  ASM 9 the hash never matched. The compat pass gives mod code an ASM 5.0.3-style printer (`Asm5Textifier`: mods'
+  Textifier subclasses are rebased onto it, their `new Textifier()` swapped); LP's own check now yields the hash it
+  expects for TD 1.2.1.
+- **Classes a transformer makes from nothing** (found 2026-10-27, Blightfall, The 1.7.10 Pack): UniMixins generates
+  GTNH's `com.gtnewhorizon.mixinextras` classes at load time. Lich's first transformers had seen no bytes for them, so
+  the compat pass never reached them, and GTNHMixins failed to start: no early mixins at all (ArchaicFix's
+  `CraftingManager` mixin, BugTorch's config). `LaunchClassLoader` now runs Lich's first transformers again on a class
+  that only a registered transformer produced.
+- **UniMixins 0.1.15's relocated ASM 9.5** stops at Java 21 class files. Renaming it to Lich's ASM (as Mixin 0.7's
+  ASM 5.2 is) cut UniMixins' bridges for 0.7-era plugins (CoreTweaks' plugin failed), so a relocated ASM 9 is kept and
+  only its `ClassReader` limit is raised to Java 25 (`ShadedAsmClassReader`).
+- **LiteLoader's class path injection** (open): LiteLoader 1.7.10 reflects on `sun.misc.URLClassPath` to put jars at a
+  chosen place in the class path, logs an error when the class isn't there, and appends them with `addURL` instead.
+  Litemods load; only their order relative to other jars differs from Java 8.
 
 ### 2.5 LWJGL
 - **Confirmed (2026-10-24, Windows x64, Temurin 25.0.4):** vanilla 1.8.9 with LWJGL 2.9.4 reaches the
@@ -610,8 +642,12 @@ differ by 1 ulp between JDKs **(verify)**.
 ## 7. Testing
 - **Modpack harness** (`test/harness`, 2026-10-27): Forge mod compatibility is tested with whole modpacks
   instead of one mod at a time (much faster, and mods meet each other as they do for players). A pack is
-  pinned in `packs.json` (a Modrinth `.mrpack` and its SHA-512). `:harness:fetchPack` installs it into
-  `run/packs/<pack>/minecraft` the way a launcher would, every file hash-checked; packs that leave their mods
+  pinned in `packs.json` by its source: a Modrinth `.mrpack` and its SHA-512, a Technic pack's Solder build (mod zips
+  with MD5s, unpacked in order; `bin/` skipped after checking its Forge is the profile's), or an FTB pack version (files
+  with SHA-1s, a fifth of them from CurseForge's CDN, so FTB is also the keyless way to CurseForge's files). No more
+  Hypixel SkyBlock packs (the user, 2026-10-27): they repeat the same mods, and their many small-author mods are the
+  likeliest to carry a RAT. `:harness:fetchPack` installs it into
+  `run/packs/<pack>/minecraft` the way its launcher would, every file hash-checked; packs that leave their mods
   to McInstanceLoader get its list resolved directly (the loader itself is left out: it downloads through a
   third-party CurseForge proxy with certificate checks off). `:harness:runPack` starts the local test server,
   then runs each profile (`forge` on Java 8, `lich-forge` on Java 25) from a fresh copy of that directory
@@ -624,6 +660,35 @@ differ by 1 ulp between JDKs **(verify)**.
   once in the template, the way a player would, so runs are unattended (each run is a fresh copy, so a prompt would
   otherwise come up every time, on the desktop): for SkyBlock Enhanced, PackCore's config-preset dialog (the 1080p
   preset, `PromptSetDefaultConfig` off).
+  - **World mode** (`:harness:worldPack`, 2026-10-27): the server join only runs the mods' client
+    side, so this one plays singleplayer, where the integrated server runs worldgen, tile entities, machines and
+    saving on the same JVM. A driver, `dev.lich.harness.driver.WorldDriver`, joins the launch as an extra LaunchWrapper
+    tweaker (Java 8 bytecode, in a jar on the class path), so the same jar drives Forge on Java 8 and Lich. It
+    reaches the game only by reflection on SRG names, which are identical in 1.7.10 and 1.8.9, and waits for the game
+    with `findLoadedClass`, so it never loads a game class before FML's transformers are in. It asks every live
+    thread's context class loader as well as `Launch.classLoader`: FoamFix swaps `cachedClasses` for another map, and
+    Essential relaunches the whole launch (Lich's boot included) in a class loader of its own, with a second copy of
+    `Launch`. A relaunch calls the tweakers again; only one driver runs. Once
+    the first screen is up it creates a creative world with a fixed seed (or opens the map the pack ships, `save` in
+    `packs.json`; Blightfall's world-creation screen copies its template `flans/` into `saves/` through Lockdown, which
+    the pack's `setup.copy` does instead; commands are turned on as LAN-with-cheats does) and the pack's world type (`worldType` in
+    `packs.json`: The Lost Era's DefaultWorldGenerator makes RTG the default), stays 30 s, teleports to 8 points
+    1000 blocks out (20 s each, so new chunks generate in many biomes), stays `--hold` seconds, saves and quits as the
+    pause menu does, opens the world again for 30 s, saves and quits the game. Each step is a `LICH-HARNESS …` log
+    line; the run fails on a crash report (CoreTweaks keeps the game running after one), a driver failure, an early
+    exit or a step that doesn't come within `--timeout` (a stall saves `jcmd Thread.print` to `stall-threads.txt`
+    first). The report (`world-report.md`) adds loaded chunks, entities, tile entities and mean tick time per phase
+    for each profile. One game at a time: the dev machine has 16 GB, and a 1.7.10 pack with a 4 GB heap uses ~6 GB.
+  - **More packs, Lich only** (2026-10-27, world mode, no Forge baseline): 1.7.10: **FTB Infinity Evolved 3.1.0**
+    (139 mod jars) ✅, **FTB SkyFactory 2.5.8** (145) ✅, **The 1.7.10 Pack 0.10.15** (Technic, 218): loads and
+    enters its world, the run was cut short by low memory; **Blightfall 3.1.1-CE** (Technic, 103, LiteLoader +
+    VoxelMap): not rerun since the last fixes. 1.8.9: **Everest Client 2.0.4** ✅, **1.8 PvP Pack v6** ✅,
+    **BedWars+ 1.5.0** (Essential, SkyHanni) ✅; one earlier BedWars+ run hung in save-and-quit and wasn't
+    reproduced. They turned up nine Lich bugs (§2.3, §2.4): LiteLoader's `javax.activity` exception, Decocraft's
+    `PNGImageReader`, SHA-1 jar signatures, signer mismatches between excluded and transformed classes, writes to
+    `getSources()`, ASM 9's `Textifier` output (Logistics Pipes), classes generated by transformers, and UniMixins'
+    relocated ASM 9 (its bridges, its reader limit and Mixin's version detection). No more Hypixel SkyBlock packs:
+    repetitive, and the most likely to carry a RAT; Hypixel Premium and SkyClient were dropped.
   - Packs: **The Lost Era 1.6.10** (1.7.10, 185 mod jars: IC2, BuildCraft, Thaumcraft 4, AE2 GTNH,
     Mekanism, Thermal, Tinkers, Botania, Witchery, Railcraft, Forestry, GregTech 4, ...) and **SkyBlock
     Enhanced 2.3.21** (1.8.9, 20 mods: Essential, OneConfig mods, NEU, SkyHanni, Skytils, Dungeons Guide,
@@ -682,7 +747,7 @@ differ by 1 ulp between JDKs **(verify)**.
 | 1. Vanilla 1.8.9 on 25 🟡 | `boot` + `launchwrapper` + flags + log4j safety + profile generator. The SRV fix came free with the class loader parent. The Twitch null stream moved to the perf mod (Phase 8): on 25 it only loads a few unused DLLs | **So far (2026-10-24):** main menu and joining a local server on Java 25 with zero JVM warnings. Prism test instances `lich-1.8.9`/`lich-1.7.10` start Lich on Java 25. On 2026-10-27 the user ran a singleplayer world and a public server with their account in `lich-forge-1.8.9`, which covers boot, launchwrapper and login on 1.8.9 (in the Forge profile). **Left:** the vanilla profile with a real account: it has no Prism instance any more, so only devlaunch (offline) runs it |
 | 2. Vanilla 1.7.10 on 25 ✅ | Same for 1.7.10. No 1.7.10-specific code was needed | **Done 2026-10-24:** in Prism with the user's account, a singleplayer world and a public server (as.minemen.club, about 40 s, chat working), Java 25 |
 | 3. Forge, no mods 🟡 | Runtime binpatching through a Pack200 shim (§4.5), ASM 9 + ASM 5 shims, SecurityManager strip, reflection compat for ObjectHolderRef/EnumHelper (§4.4), Lich's system class loader, hiding Lich's jars from FML, the SoundManager race fix (§2.4) | **So far (2026-10-24):** Forge 1.7.10 and 1.8.9 load ("successfully loaded 3 mods") and reach the main menu on Java 25 through devlaunch, with zero JVM warnings; their logs match the Java 8 Forge baseline apart from Lich's own lines. In Prism, `lich-forge-1.8.9` with the user's account ran a singleplayer world (create, play, save, quit) cleanly. On 2026-10-27 the user ran singleplayer and a public server with their account in both `lich-forge-1.8.9` and `lich-forge-1.7.10`. **Left:** the mod list screen |
-| 4. Forge mods 🟡 | Mixin provider, redirect table, reflection compat, JDK shims, harness + corpus | Agreed % of the corpus loads; failures name the mod and the API. **So far (2026-10-24):** a 47-entry corpus (§7) joins a local server and stays in the world through Lich on Java 25, all but one (Hodgepodge: needs LWJGL 3; passes since Phase 6). OptiFine and a full client mod on both versions apply exactly the mixins they do on Java 8. **2026-10-27:** the modpack harness (§7): The Lost Era (1.7.10, 255 mods) and SkyBlock Enhanced (1.8.9, 28) join and stay on Forge/Java 8 and Lich/Java 25 with the same mixins applied, after five Lich fixes they turned up; the user has Prism instances of both packs for each. **Left:** a singleplayer-world harness (worldgen and content mods were only tested client-side), the mod list screen, more packs, the Mixin provider for Lich mods (Phase 5) |
+| 4. Forge mods 🟡 | Mixin provider, redirect table, reflection compat, JDK shims, harness + corpus | Agreed % of the corpus loads; failures name the mod and the API. **So far (2026-10-24):** a 47-entry corpus (§7) joins a local server and stays in the world through Lich on Java 25, all but one (Hodgepodge: needs LWJGL 3; passes since Phase 6). OptiFine and a full client mod on both versions apply exactly the mixins they do on Java 8. **2026-10-27:** the modpack harness (§7): The Lost Era (1.7.10, 255 mods) and SkyBlock Enhanced (1.8.9, 28) join and stay on Forge/Java 8 and Lich/Java 25 with the same mixins applied, after five Lich fixes they turned up; the user has Prism instances of both packs for each. The user's first singleplayer world in The Lost Era crashed on a Lich bug (EnumHelper with a varargs constructor, fixed), so the harness got a world mode (§7). Six more packs pass it on Lich (FTB Infinity Evolved, FTB SkyFactory 2.5, Everest Client, 1.8 PvP Pack, BedWars+; The 1.7.10 Pack reaches its world), after nine more Lich fixes. **Left:** finish The 1.7.10 Pack and Blightfall, the world mode on The Lost Era and SkyBlock Enhanced against Forge, LiteLoader's class path injection, the mod list screen, more packs, the Mixin provider for Lich mods (Phase 5) |
 | 5. Lich mods v0 | `remap` (vanilla-profile SRG), `loader`, `lich.mod.json`, `api` v0 (lifecycle, events, HUD, keybinds, config; hooks woven on demand, §5.2), FML-hiding, dual jars | A full client mod runs as a Lich mod on both versions, with and without Forge; with no Lich mods installed, every game class is byte-identical to what Lich defines without `loader`/`api` (a harness check). **So far (2026-10-25):** A full client mod is ported and runs through devlaunch on both versions in the `lich` and `lich-forge` profiles, with OptiFine too; its menus and HUD match its Forge builds. The F3 text hook works on vanilla 1.7.10. Both Prism instances run it (1.7.10 with OptiFine E7); against OptiFine 1.8.9 L5's patched classes every Lich and mod injector still finds its target (checked statically, not yet in game). **Left:** the byte-identical harness check |
 | 6. LWJGL 3 🟡 | `compat-lwjgl2` + redirects; Prism LWJGL override | Windows/Linux/macOS ARM native; mods calling GL11/Display/Keyboard work. **So far (2026-10-25, Windows x64):** the game runs on LWJGL 3.3.6 in every Lich profile (§2.5): vanilla 1.8.9, Forge 1.7.10 and 1.8.9 through devlaunch and Prism (`lich-forge-1.8.9`, offline); input, menus, fullscreen checked by hand; all 47 corpus entries join a server (§7), Hodgepodge and the OneConfig mods included; `checkLinkage` is clean. On 2026-10-27, singleplayer and a public server with the user's account in both Prism instances (`lich-forge-1.8.9`, `lich-forge-1.7.10`). **Left:** Linux (X11, Wayland) and macOS Apple Silicon, controllers (untested) |
 | 7. Server safety gate | Determinism replay + anticheat CI jobs; Mixin deny-list enforcement | Zero packet diffs vs Java 8 vanilla; zero anticheat flags. **So far (2026-10-27):** the manual check: the user PvPed on a public server with an anticheat through Lich on Java 25, with no flags or bans. **Left:** the determinism replay, the anticheat CI job and the Mixin deny-list check |

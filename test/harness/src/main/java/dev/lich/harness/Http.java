@@ -17,10 +17,30 @@ import java.time.Duration;
 import java.util.HexFormat;
 
 /**
- * Downloads for the harness: mod files into a cache keyed by their hash, and Modrinth API calls. Modpacks name
- * files on many hosts, so every file with a known hash is checked against it, and certificates are always checked.
+ * Downloads for the harness: mod files into a cache keyed by their hash, and pack API calls (Modrinth, Technic's
+ * Solder, FTB). Modpacks name files on many hosts, so every file with a known hash is checked against
+ * it, and certificates are always checked.
  */
 final class Http {
+    /** A file's expected digest, in whichever algorithm its pack format gives: SHA-512, SHA-1 or MD5. */
+    record Hash(String algorithm, String hex) {
+        static Hash sha512(String hex) {
+            return hex == null ? null : new Hash("SHA-512", hex);
+        }
+
+        static Hash sha1(String hex) {
+            return hex == null ? null : new Hash("SHA-1", hex);
+        }
+
+        static Hash md5(String hex) {
+            return hex == null ? null : new Hash("MD5", hex);
+        }
+
+        boolean matches(Path file) throws IOException {
+            return hex.equalsIgnoreCase(digest(algorithm, file));
+        }
+    }
+
     private static final int ATTEMPTS = 3;
     // Modrinth asks API clients to identify themselves.
     private static final String USER_AGENT = "lich-harness/0.1 (Lich dev test harness)";
@@ -36,13 +56,13 @@ final class Http {
     }
 
     /**
-     * The file at {@code url}, from the cache if it's there. {@code sha512} may be null (some packs list files
-     * without a hash); such files are cached by URL and trusted once downloaded.
+     * The file at {@code url}, from the cache if it's there. {@code hash} may be null (some packs list files without
+     * one); such files are cached by URL and trusted once downloaded.
      */
-    Path fetch(String url, String fileName, String sha512) throws IOException {
-        String key = sha512 != null ? sha512.toLowerCase() : "url-" + hash("SHA-256", url.getBytes(StandardCharsets.UTF_8));
+    Path fetch(String url, String fileName, Hash hash) throws IOException {
+        String key = hash != null ? hash.hex().toLowerCase() : "url-" + hash("SHA-256", url.getBytes(StandardCharsets.UTF_8));
         Path target = cache.resolve(key.substring(0, Math.min(key.length(), 20))).resolve(fileName);
-        if (Files.isRegularFile(target) && (sha512 == null || sha512.equalsIgnoreCase(sha512(target)))) {
+        if (Files.isRegularFile(target) && (hash == null || hash.matches(target))) {
             return target;
         }
         Files.createDirectories(target.getParent());
@@ -50,13 +70,14 @@ final class Http {
         IOException failure = null;
         for (int attempt = 1; attempt <= ATTEMPTS; attempt++) {
             try {
-                HttpResponse<Path> response = client.send(request(url).timeout(Duration.ofMinutes(5)).build(),
+                // Long enough for a pack's world save over a slow mirror (Blightfall's is 189 MB).
+                HttpResponse<Path> response = client.send(request(url).timeout(Duration.ofMinutes(30)).build(),
                         HttpResponse.BodyHandlers.ofFile(part));
                 if (response.statusCode() != 200) {
                     throw new IOException("HTTP " + response.statusCode() + " for " + url);
                 }
-                if (sha512 != null && !sha512.equalsIgnoreCase(sha512(part))) {
-                    throw new IOException("SHA-512 mismatch for " + url);
+                if (hash != null && !hash.matches(part)) {
+                    throw new IOException(hash.algorithm() + " mismatch for " + url);
                 }
                 Files.move(part, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
                 return target;
@@ -86,11 +107,28 @@ final class Http {
     }
 
     private static HttpRequest.Builder request(String url) {
-        return HttpRequest.newBuilder(URI.create(url)).header("User-Agent", USER_AGENT);
+        return HttpRequest.newBuilder(uri(url)).header("User-Agent", USER_AGENT);
     }
 
-    static String sha512(Path file) throws IOException {
-        MessageDigest digest = digest("SHA-512");
+    /**
+     * {@code url} as a URI, with characters a URI can't hold percent-encoded the way a browser sends them: pack
+     * manifests give some URLs raw (FTB's CurseForge links keep the file name's spaces and brackets).
+     */
+    static URI uri(String url) {
+        StringBuilder encoded = new StringBuilder();
+        for (byte b : url.getBytes(StandardCharsets.UTF_8)) {
+            char c = (char) (b & 0xff);
+            if (c < 0x80 && (Character.isLetterOrDigit(c) || "_-!.~'()*,;:$&+=/@%?#".indexOf(c) >= 0)) {
+                encoded.append(c);
+            } else {
+                encoded.append('%').append(HexFormat.of().withUpperCase().toHexDigits(b));
+            }
+        }
+        return URI.create(encoded.toString());
+    }
+
+    static String digest(String algorithm, Path file) throws IOException {
+        MessageDigest digest = digest(algorithm);
         try (InputStream in = Files.newInputStream(file)) {
             byte[] buffer = new byte[64 * 1024];
             for (int n; (n = in.read(buffer)) > 0; ) {
