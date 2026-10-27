@@ -17,6 +17,7 @@ dependencies {
     compileOnly(libs.asm.analysis)
     compileOnly(libs.asm.util)
     testImplementation(libs.asm)
+    testImplementation(libs.asm.util)
 }
 
 tasks.compileJava {

@@ -20,6 +20,8 @@ public final class JdkCompat {
                 // JSR-250, gone since Java 11. Mixin 0.7 checks transformers for @Resource.
                 .renameType("javax/annotation/Resource", SHIMS + "annotation/Resource")
                 .renameType("javax/annotation/Resource$AuthenticationType", SHIMS + "annotation/Resource$AuthenticationType")
+                // Left with CORBA in Java 11 too. LiteLoader 1.7.10 throws it (LiteLoader.getMod).
+                .renameType("javax/activity/InvalidActivityException", SHIMS + "activity/InvalidActivityException")
                 // Nashorn left the JDK in 15 (JEP 372); Lich ships the standalone one, same API in another
                 // package. Mods also name its classes in strings, for Class.forName.
                 .renamePackage("jdk/nashorn/", "org/openjdk/nashorn/")
