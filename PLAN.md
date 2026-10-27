@@ -65,7 +65,7 @@ Never redistribute Minecraft or patched Forge binaries. Patch at load time, or o
 | `sun.reflect.ReflectionFactory.newFieldAccessor`/`newConstructorAccessor`, `sun.reflect.FieldAccessor`/`ConstructorAccessor` | 9 | `ObjectHolderRef`, `EnumHelper`, mods that copied them | **Done (Phase 3):** Lich look-alikes, §4.4 |
 | `java.util.jar.Pack200` | 14 | FML `ClassPatchManager` (`binpatches.pack.lzma`) | **Done (Phase 3):** a Pack200 shim at runtime (§4.5), not install-time pre-patching |
 | JSR-250 `javax.annotation.Resource` | 11 (JEP 320) | Mixin 0.7's `LegacyTransformerHandle` (fatal at launch with any Mixin mod) | **Done (Phase 4):** renamed to a look-alike annotation in `compat-jdk` |
-| JAXB `javax.xml.bind` (`DatatypeConverter`) | 11 | Mods doing base64/hex | Bundle jaxb-api, or redirect to `java.util.Base64`/`HexFormat` |
+| JAXB `javax.xml.bind` (`DatatypeConverter`, `JAXBContext`) | 11 | Mods doing base64/hex; Enhanced Loot Bags reads its XML config with it (The Lost Era) | **Done (2026-10-27):** Lich ships JAXB 2.3 (the last line with the `javax.xml.bind` package: `jakarta.xml.bind-api` 2.3.3, `jaxb-runtime`/`txw2` 2.3.9, `istack-commons-runtime` 3.0.12, `jakarta.activation` 1.2.2), hidden from mod discovery (the jars have a `module-info`) and class-loader-excluded, so there's one copy as there was in the JDK. The runtime registers itself through `META-INF/services`, which `JAXBContext` finds through the context class loader |
 | Nashorn `jdk.nashorn.*` | 15 | Scripting mods: Fisk's Superheroes (hero packs in JS) | **Done (Phase 4):** Lich ships `nashorn-core` 15.7 (on its ASM 9, hidden from mod discovery, a class loader exclusion) and the compat pass renames `jdk/nashorn/` → `org/openjdk/nashorn/`, plus the class names mods pass to `Class.forName`. Its engines load game classes through the context class loader (LaunchClassLoader) |
 | `sun.misc.BASE64Encoder/Decoder` | 9 | Old mods/libs | Redirect to shim |
 | `sun.reflect.Reflection.getCallerClass` | 9 | log4j 2.0-beta9 (has a fallback), mods | Shim on `StackWalker` |
@@ -210,6 +210,13 @@ Never redistribute Minecraft or patched Forge binaries. Patch at load time, or o
   9+ throws in the constructor. OneConfig's environment-LWJGL path passes one. The compat pass filters
   the array of every `URLClassLoader` constructor call, `super(...)` included (`UrlClassLoaders`, a new
   `filterFirstArgument` rule kind); arrays without `null`s pass unchanged.
+- **Broken ImageIO provider lists** (found 2026-10-27 by the modpack harness, §7): Dungeons Guide shades
+  TwelveMonkeys under its own package but keeps `META-INF/services/javax.imageio.spi.*` naming the original
+  classes. Java 8's `IIORegistry` printed each missing one and went on, because FML had a SecurityManager set;
+  Java 25 has none, and its `ServiceLoader` throws while looking the class up, outside `IIORegistry`'s catch.
+  With any OneConfig mod, OneConfig's loader touches ImageIO at launch and the game exits. The caller is in
+  OneConfig's own class loader, out of the compat pass's reach, so `LaunchClassLoader.getResources` (the context
+  class loader ImageIO uses) serves those lists without the classes it can't find (`ImageIoProviders`).
 
 ### 2.5 LWJGL
 - **Confirmed (2026-10-24, Windows x64, Temurin 25.0.4):** vanilla 1.8.9 with LWJGL 2.9.4 reaches the
@@ -270,6 +277,13 @@ Never redistribute Minecraft or patched Forge binaries. Patch at load time, or o
     and mirrors the one NanoVG function whose signature changed since the LWJGL 3.3.1 OneConfig was built
     against (`Lwjgl331NanoVG`). OneConfig also removes LaunchWrapper's `org.lwjgl.` exclusion, so boot puts
     it in `LichExclusions` (§4.2).
+  - **Private fields mods reflect on** keep LWJGL 2's names and types: `Mouse.x`, `y`, `event_x`, `event_y`
+    hold the position the getters return, refreshed when LWJGL 2 refreshed them (`poll` from
+    `Display.update`, `next`, `setCursorPosition`, grabbing). Essential's `GlobalMouseOverride` sets them to
+    move the position the game sees while it draws an overlay; without them it crashed the game seconds after
+    joining a world (found 2026-10-27 by the modpack harness, SkyBlock Enhanced). `Mouse.readBuffer` holds the
+    events `next` hasn't returned yet, in LWJGL 2's 22-byte layout: TC4Tweak checks it for pending events
+    (The Lost Era).
   - **Tested (Windows x64):** vanilla 1.8.9 to the main menu; Forge 1.7.10 and 1.8.9 through the
     loading screen into a local server; typing in chat (shift, punctuation, backspace), turning the
     camera, clicking menus, F11 fullscreen and back; the mod corpus (§7). **(verify)** Linux X11/Wayland,
@@ -574,7 +588,8 @@ Goal: no bans, no kicks, no disconnects that a plain vanilla/Forge client wouldn
   Open question: offer an opt-in `lich` brand.
 - Login/encryption on Java 25: 1.7/1.8 use RSA-1024 + `AES/CFB8/NoPadding` and zlib (1.8). **Works for
   1.7.10** (2026-10-24: the user joined as.minemen.club with a Microsoft account through Lich on Java 25,
-  so session join, RSA and AES/CFB8 work); 1.8.9 (which adds zlib) still to check. Mojang session-server
+  so session join, RSA and AES/CFB8 work); **works for 1.8.9** too, zlib included (2026-10-27: the user played on
+  a public server with their account in `lich-forge-1.8.9`). Mojang session-server
   HTTPS works better on 25 (newer CA certs and TLS).
 
 ### 6.3 Floating point
@@ -587,11 +602,44 @@ differ by 1 ulp between JDKs **(verify)**.
   outgoing movement/action packet byte for byte.
 - **Anticheat smoke test**: local 1.8.8 Spigot/Paper with a prediction anticheat (e.g. Grim behind
   ViaVersion **(verify)**). Walk, sprint-jump, bridge and PvP for N minutes with zero flags.
-- Manual checks on big public servers (e.g. Hypixel) before each release.
+- Manual checks on big public servers (e.g. Hypixel) before each release. First one done 2026-10-27: PvP on a
+  public server with an anticheat through Lich on Java 25, no flags or bans.
 
 ---
 
 ## 7. Testing
+- **Modpack harness** (`test/harness`, 2026-10-27): Forge mod compatibility is tested with whole modpacks
+  instead of one mod at a time (much faster, and mods meet each other as they do for players). A pack is
+  pinned in `packs.json` (a Modrinth `.mrpack` and its SHA-512). `:harness:fetchPack` installs it into
+  `run/packs/<pack>/minecraft` the way a launcher would, every file hash-checked; packs that leave their mods
+  to McInstanceLoader get its list resolved directly (the loader itself is left out: it downloads through a
+  third-party CurseForge proxy with certificate checks off). `:harness:runPack` starts the local test server,
+  then runs each profile (`forge` on Java 8, `lich-forge` on Java 25) from a fresh copy of that directory
+  through devlaunch, joins the server and stays 60 s in the world, and writes `run/harness/<pack>/report.md`:
+  each outcome, mods loaded, time to menu and join, then the warnings/errors and mixins that only one side
+  logged (normalized: no times, threads, hashes or game paths). The Java 8 run gets a copy of LWJGL 2's
+  `Mouse` that never grabs or moves the real cursor (`NoGrabMouse`), the counterpart of
+  `-Dlich.dev.noMouseGrab`. `:harness:prismPack` makes the user's Prism instances of the same pack,
+  `<pack>-forge-<mc>` and `<pack>-lich-<mc>`, for testing by hand. A pack's `setup` answers first-launch prompts
+  once in the template, the way a player would, so runs are unattended (each run is a fresh copy, so a prompt would
+  otherwise come up every time, on the desktop): for SkyBlock Enhanced, PackCore's config-preset dialog (the 1080p
+  preset, `PromptSetDefaultConfig` off).
+  - Packs: **The Lost Era 1.6.10** (1.7.10, 185 mod jars: IC2, BuildCraft, Thaumcraft 4, AE2 GTNH,
+    Mekanism, Thermal, Tinkers, Botania, Witchery, Railcraft, Forestry, GregTech 4, ...) and **SkyBlock
+    Enhanced 2.3.21** (1.8.9, 20 mods: Essential, OneConfig mods, NEU, SkyHanni, Skytils, Dungeons Guide,
+    Phosphor, FoamFix, ...). 1.8.9 has no big content packs; its corpus entries (below) cover the rest.
+  - SkyBlock Enhanced (2026-10-27): found two Lich bugs, broken ImageIO provider lists (§2.4) and
+    Essential's reflection on `Mouse` (§2.5); with both fixed it joins and stays on both profiles, 28 mods,
+    727 vs 726 mixins applied. What's left in "only with Lich" is explained: Essential relaunches later on Lich
+    (its trigger on Java 8 is Forge's ASM 5.0.3, which Lich replaces), so its first, abandoned launch logs a
+    few extra warnings; Skytils tries to install its own SecurityManager when FML's is missing and logs the
+    failure.
+  - The Lost Era (2026-10-27): found three Lich bugs, ASP + GS Patcher's compressed frames in a Java 5 class
+    (ASM 9 throws, ASM 5 wrote them: `Asm5Frames`), JAXB (§2.3) and TC4Tweak's reflection on `Mouse.readBuffer`
+    (§2.5). With them fixed both profiles join and stay: 255 mods, 896 mixins applied on each side and none on
+    only one, 1217 warnings and errors each. Lich reached the menu in 48 s (Java 8: 65 s) and joined in 122 s
+    (196 s). The one real difference: ModularUI turns its custom cursors off when `Sys.getVersion()` is 3+
+    (written for lwjgl3ify, which has no LWJGL 2 cursors), so its screens show the normal cursor.
 - **Harness**: a `testmod` (built as both a Forge mod and a Lich mod). With `-Dlich.test=…` set it
   loads a world, runs N ticks, optionally joins a local server, dumps a report, and exits with a status
   code.
@@ -627,13 +675,13 @@ differ by 1 ulp between JDKs **(verify)**.
 | Phase | Goal | Done when |
 |---|---|---|
 | 0. Setup ✅ | Gradle multi-project on JDK 25 + `devlaunch`; still to do: decompile LaunchWrapper 1.12, FML 1.7.10/1.8.9; read lwjgl3ify/RFB | **Done 2026-10-24:** repo builds; vanilla 1.8.9 and 1.7.10 reach the main menu on **Java 8** through `devlaunch` (baseline). The Lich version JSON generator moves to Phase 1, since there's no `boot` to point it at yet. |
-| 1. Vanilla 1.8.9 on 25 🟡 | `boot` + `launchwrapper` + flags + log4j safety + profile generator. The SRV fix came free with the class loader parent. The Twitch null stream moved to the perf mod (Phase 8): on 25 it only loads a few unused DLLs | **So far (2026-10-24):** main menu and joining a local server on Java 25 with zero JVM warnings. Prism test instances `lich-1.8.9`/`lich-1.7.10` start Lich on Java 25. **Left:** a singleplayer world and a public server with a real account in `lich-1.8.9` (§4.6) |
+| 1. Vanilla 1.8.9 on 25 🟡 | `boot` + `launchwrapper` + flags + log4j safety + profile generator. The SRV fix came free with the class loader parent. The Twitch null stream moved to the perf mod (Phase 8): on 25 it only loads a few unused DLLs | **So far (2026-10-24):** main menu and joining a local server on Java 25 with zero JVM warnings. Prism test instances `lich-1.8.9`/`lich-1.7.10` start Lich on Java 25. On 2026-10-27 the user ran a singleplayer world and a public server with their account in `lich-forge-1.8.9`, which covers boot, launchwrapper and login on 1.8.9 (in the Forge profile). **Left:** the vanilla profile with a real account: it has no Prism instance any more, so only devlaunch (offline) runs it |
 | 2. Vanilla 1.7.10 on 25 ✅ | Same for 1.7.10. No 1.7.10-specific code was needed | **Done 2026-10-24:** in Prism with the user's account, a singleplayer world and a public server (as.minemen.club, about 40 s, chat working), Java 25 |
-| 3. Forge, no mods 🟡 | Runtime binpatching through a Pack200 shim (§4.5), ASM 9 + ASM 5 shims, SecurityManager strip, reflection compat for ObjectHolderRef/EnumHelper (§4.4), Lich's system class loader, hiding Lich's jars from FML, the SoundManager race fix (§2.4) | **So far (2026-10-24):** Forge 1.7.10 and 1.8.9 load ("successfully loaded 3 mods") and reach the main menu on Java 25 through devlaunch, with zero JVM warnings; their logs match the Java 8 Forge baseline apart from Lich's own lines. In Prism, `lich-forge-1.8.9` with the user's account ran a singleplayer world (create, play, save, quit) cleanly. **Left:** the mod list screen, a public server on Forge 1.8.9, and `lich-forge-1.7.10` on the user's account |
-| 4. Forge mods 🟡 | Mixin provider, redirect table, reflection compat, JDK shims, harness + corpus | Agreed % of the corpus loads; failures name the mod and the API. **So far (2026-10-24):** a 47-entry corpus (§7) joins a local server and stays in the world through Lich on Java 25, all but one (Hodgepodge: needs LWJGL 3; passes since Phase 6). OptiFine and a full client mod on both versions apply exactly the mixins they do on Java 8. **Left:** a singleplayer-world harness (worldgen and content mods were only tested client-side), the mod list screen, more mods per genre, Java 8 baselines for every corpus mod, the Mixin provider for Lich mods (Phase 5) |
+| 3. Forge, no mods 🟡 | Runtime binpatching through a Pack200 shim (§4.5), ASM 9 + ASM 5 shims, SecurityManager strip, reflection compat for ObjectHolderRef/EnumHelper (§4.4), Lich's system class loader, hiding Lich's jars from FML, the SoundManager race fix (§2.4) | **So far (2026-10-24):** Forge 1.7.10 and 1.8.9 load ("successfully loaded 3 mods") and reach the main menu on Java 25 through devlaunch, with zero JVM warnings; their logs match the Java 8 Forge baseline apart from Lich's own lines. In Prism, `lich-forge-1.8.9` with the user's account ran a singleplayer world (create, play, save, quit) cleanly. On 2026-10-27 the user ran singleplayer and a public server with their account in both `lich-forge-1.8.9` and `lich-forge-1.7.10`. **Left:** the mod list screen |
+| 4. Forge mods 🟡 | Mixin provider, redirect table, reflection compat, JDK shims, harness + corpus | Agreed % of the corpus loads; failures name the mod and the API. **So far (2026-10-24):** a 47-entry corpus (§7) joins a local server and stays in the world through Lich on Java 25, all but one (Hodgepodge: needs LWJGL 3; passes since Phase 6). OptiFine and a full client mod on both versions apply exactly the mixins they do on Java 8. **2026-10-27:** the modpack harness (§7): The Lost Era (1.7.10, 255 mods) and SkyBlock Enhanced (1.8.9, 28) join and stay on Forge/Java 8 and Lich/Java 25 with the same mixins applied, after five Lich fixes they turned up; the user has Prism instances of both packs for each. **Left:** a singleplayer-world harness (worldgen and content mods were only tested client-side), the mod list screen, more packs, the Mixin provider for Lich mods (Phase 5) |
 | 5. Lich mods v0 | `remap` (vanilla-profile SRG), `loader`, `lich.mod.json`, `api` v0 (lifecycle, events, HUD, keybinds, config; hooks woven on demand, §5.2), FML-hiding, dual jars | A full client mod runs as a Lich mod on both versions, with and without Forge; with no Lich mods installed, every game class is byte-identical to what Lich defines without `loader`/`api` (a harness check). **So far (2026-10-25):** A full client mod is ported and runs through devlaunch on both versions in the `lich` and `lich-forge` profiles, with OptiFine too; its menus and HUD match its Forge builds. The F3 text hook works on vanilla 1.7.10. Both Prism instances run it (1.7.10 with OptiFine E7); against OptiFine 1.8.9 L5's patched classes every Lich and mod injector still finds its target (checked statically, not yet in game). **Left:** the byte-identical harness check |
-| 6. LWJGL 3 🟡 | `compat-lwjgl2` + redirects; Prism LWJGL override | Windows/Linux/macOS ARM native; mods calling GL11/Display/Keyboard work. **So far (2026-10-25, Windows x64):** the game runs on LWJGL 3.3.6 in every Lich profile (§2.5): vanilla 1.8.9, Forge 1.7.10 and 1.8.9 through devlaunch and Prism (`lich-forge-1.8.9`, offline); input, menus, fullscreen checked by hand; all 47 corpus entries join a server (§7), Hodgepodge and the OneConfig mods included; `checkLinkage` is clean. **Left:** Linux (X11, Wayland) and macOS Apple Silicon, a public server and singleplayer with the user's account, controllers (untested), the 1.7.10 Prism instance |
-| 7. Server safety gate | Determinism replay + anticheat CI jobs; Mixin deny-list enforcement | Zero packet diffs vs Java 8 vanilla; zero anticheat flags |
+| 6. LWJGL 3 🟡 | `compat-lwjgl2` + redirects; Prism LWJGL override | Windows/Linux/macOS ARM native; mods calling GL11/Display/Keyboard work. **So far (2026-10-25, Windows x64):** the game runs on LWJGL 3.3.6 in every Lich profile (§2.5): vanilla 1.8.9, Forge 1.7.10 and 1.8.9 through devlaunch and Prism (`lich-forge-1.8.9`, offline); input, menus, fullscreen checked by hand; all 47 corpus entries join a server (§7), Hodgepodge and the OneConfig mods included; `checkLinkage` is clean. On 2026-10-27, singleplayer and a public server with the user's account in both Prism instances (`lich-forge-1.8.9`, `lich-forge-1.7.10`). **Left:** Linux (X11, Wayland) and macOS Apple Silicon, controllers (untested) |
+| 7. Server safety gate | Determinism replay + anticheat CI jobs; Mixin deny-list enforcement | Zero packet diffs vs Java 8 vanilla; zero anticheat flags. **So far (2026-10-27):** the manual check: the user PvPed on a public server with an anticheat through Lich on Java 25, with no flags or bans. **Left:** the determinism replay, the anticheat CI job and the Mixin deny-list check |
 | 8. Optimisations | The `perf` mod (§5.3), plus the replaceable-subsystem hooks it needs (§5.2, level 4); each optimisation benchmarked and server-safe | Measured FPS/stutter/memory gains vs Java 8, with `perf` using no private Lich internals |
 | 9. Ship | Installer UX, Prism pack, docs, compat list, mod-dev docs + template | Users install without reading source; a third party can write a Lich mod |
 | later | 1.12.2 (`compat-forge-1.12.2`, `compat-mc-1.12.2`, `api-1.12.2`) | — |

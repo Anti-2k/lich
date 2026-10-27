@@ -123,6 +123,11 @@ Working so far:
 - `installer`: `ProfileInstaller` writes `versions/{lich,forge,lich-forge}-<mc>/` and `libraries/`, and
   `PrismComponent` writes Prism components.
 - `devlaunch`.
+- `harness` (`test/harness`): Forge mod compatibility through whole modpacks, pinned in `packs.json`
+  (PLAN.md §7). `./gradlew :harness:runPack "-Plich.pack=lost-era" "-Plich.mc=1.7.10"` runs the pack on Forge/Java 8
+  and Lich/Java 25 against the local test server, and writes `run/harness/<pack>/report.md`, which lists what only
+  one side logged. `-Plich.profiles=lich-forge` reruns Lich alone. `:harness:prismPack` creates the user's Prism
+  instances `<pack>-forge-<mc>` and `<pack>-lich-<mc>`. Refresh the `-lich-` ones with `installPrism` after a Lich build.
 
 The other modules are placeholders. Each one's build file comment names its phase and PLAN.md section.
 
@@ -143,9 +148,11 @@ How Lich's classes load, and where a new class goes:
 LaunchWrapper compatibility rule: `LaunchClassLoader` keeps 1.12's private fields by name and type,
 because Mixin, coremods and FoamFix-style mods reflect on them (`LaunchClassLoaderTest` pins them). Lich
 code doesn't add public API to the `net.minecraft.launchwrapper` classes. Hooks go in `dev.lich.launchwrapper`.
-Three deliberate differences: Lich's first and last transformers also run on transformer-excluded classes,
-`getSources()` leaves out `LichSources`, and `LichExclusions` (`org.lwjgl.` on LWJGL 3) hold even when a
-mod removes the same prefix from `classLoaderExceptions` (OneConfig does).
+Four deliberate differences: Lich's first and last transformers also run on transformer-excluded classes,
+`getSources()` leaves out `LichSources`, `LichExclusions` (`org.lwjgl.` on LWJGL 3) hold even when a
+mod removes the same prefix from `classLoaderExceptions` (OneConfig does), and ImageIO's provider lists
+(`META-INF/services/javax.imageio.spi.*`) leave out classes that aren't there (`ImageIoProviders`: Java 8 skipped
+them under FML's SecurityManager).
 
 ## Conventions
 

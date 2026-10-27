@@ -1,0 +1,24 @@
+{
+  "lost-era": {
+    "name": "The Lost Era 1.6.10",
+    "mc": "1.7.10",
+    "forge": "10.13.4.1614",
+    "url": "https://cdn.modrinth.com/data/p87Jiw2q/versions/OdtinaRg/LostEra_Modpack-1.6.10.mrpack",
+    "sha512": "ff14ee19164cef6d7eb6d150aa6c319d6baea7a1928b389b8d0d9e72df947a7313645f28d61032e2a0b675d4c9f676c716fc77d24ddeb3674674cbeda266c4ee",
+    "memoryMb": 6144
+  },
+  "skyblock-enhanced": {
+    "name": "SkyBlock Enhanced 2.3.21",
+    "mc": "1.8.9",
+    "forge": "11.15.1.2318",
+    "url": "https://cdn.modrinth.com/data/9JTbeXjU/versions/zG48O4Km/SkyBlock%20Enhanced-2.3.21.mrpack",
+    "sha512": "19bc18020c09cb1e10a0711fb90c08f5379b34011bf6578251271cff01ed7bc80770cf37a9f755ae115f4970f0e4efa2cf2f1a353de24aceaa50e1d015b79f51",
+    "memoryMb": 4096,
+    "setup": {
+      "unzip": ["Skyblock Enhanced/OfficialConfigs/Normal 1080p Configs.zip"],
+      "write": {
+        "config/PackCore.json": "{\n  \"PromptSetDefaultConfig\": false,\n  \"ShowOptifineGuide\": true,\n  \"EnableCustomMenu\": true\n}\n"
+      }
+    }
+  }
+}

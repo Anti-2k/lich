@@ -20,7 +20,8 @@ import java.util.regex.Pattern;
 /**
  * devlaunch: a minimal Minecraft launcher for development. It resolves a version JSON (Mojang's, or a
  * local one that uses {@code inheritsFrom}), downloads the client, libraries, natives, assets and log
- * config into {@code <run-dir>/cache}, and starts the game offline in {@code <run-dir>/<version id>}.
+ * config into {@code <run-dir>/cache}, and starts the game offline in {@code <run-dir>/<version id>} (or
+ * {@code --game-dir}).
  */
 public final class Main {
     private static final Pattern VARIABLE = Pattern.compile("\\$\\{([^}]+)}");
@@ -58,7 +59,7 @@ public final class Main {
                 ? resolver.resolveFile(options.versionJson())
                 : resolver.resolve(options.version());
         String id = version.get("id").getAsString();
-        Path gameDir = options.runDir().resolve(id);
+        Path gameDir = options.gameDir() != null ? options.gameDir() : options.runDir().resolve(id);
         Files.createDirectories(gameDir);
         log("Version " + id + ", game directory " + gameDir);
 

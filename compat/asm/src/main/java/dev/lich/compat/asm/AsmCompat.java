@@ -24,6 +24,9 @@ public final class AsmCompat {
                 .redirect("org/objectweb/asm/Type", "getReturnType", "()Lorg/objectweb/asm/Type;", SHIMS + "Asm5Types")
                 .redirect("org/objectweb/asm/Type", "getSize", "()I", SHIMS + "Asm5Types")
                 .redirect("org/objectweb/asm/Type", "getOpcode", "(I)I", SHIMS + "Asm5Types")
+                // Compressed frames in a Java 5 class: ASM 5 wrote them (the JVM ignores them there), ASM 9 throws.
+                .redirect("org/objectweb/asm/MethodVisitor", "visitFrame", "(II[Ljava/lang/Object;I[Ljava/lang/Object;)V",
+                        SHIMS + "Asm5Frames")
                 // Visitors written for ASM 5 (FML's mod discovery, its deobfuscation, mods' transformers, Mixin
                 // 0.7) throw on Java 11+ class files, whose nest, record and permitted-subclass attributes need
                 // a newer API level. For ASM 5-level code, a higher level only adds those callbacks, whose
