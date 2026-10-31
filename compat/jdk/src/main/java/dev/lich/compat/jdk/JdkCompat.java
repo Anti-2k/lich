@@ -12,7 +12,7 @@ public final class JdkCompat {
     }
 
     public static CompatTransformer.Builder register(CompatTransformer.Builder builder) {
-        return builder
+        builder
                 // FML's binpatches (ClassPatchManager).
                 .renameType("java/util/jar/Pack200", SHIMS + "Pack200")
                 .renameType("java/util/jar/Pack200$Unpacker", SHIMS + "Pack200$Unpacker")
@@ -46,7 +46,14 @@ public final class JdkCompat {
                 .redirect("java/lang/reflect/Field", "setInt", "(Ljava/lang/Object;I)V",
                         REFLECT + "ReflectionShims", "modifiers")
                 .redirect("java/lang/reflect/Field", "getInt", "(Ljava/lang/Object;)I",
-                        REFLECT + "ReflectionShims", "modifiers")
+                        REFLECT + "ReflectionShims", "modifiers");
+        // The other primitive writes, which old code makes to static finals as it makes Field.set.
+        for (String primitive : new String[]{"Boolean:Z", "Byte:B", "Char:C", "Short:S", "Long:J", "Float:F", "Double:D"}) {
+            String[] nameAndDescriptor = primitive.split(":");
+            builder.redirect("java/lang/reflect/Field", "set" + nameAndDescriptor[0],
+                    "(Ljava/lang/Object;" + nameAndDescriptor[1] + ")V", REFLECT + "ReflectionShims", "modifiers");
+        }
+        return builder
                 // Java 9+ rejects null URLs, which Java 8's URLClassLoader kept (UrlClassLoaders).
                 .filterFirstArgument("java/net/URLClassLoader", "<init>", "([Ljava/net/URL;)V", SHIMS + "UrlClassLoaders", "withoutNulls")
                 .filterFirstArgument("java/net/URLClassLoader", "<init>", "([Ljava/net/URL;Ljava/lang/ClassLoader;)V",

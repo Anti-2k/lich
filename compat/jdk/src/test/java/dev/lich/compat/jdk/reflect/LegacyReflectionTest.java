@@ -1,6 +1,11 @@
 package dev.lich.compat.jdk.reflect;
 
+import dev.lich.compat.jdk.JdkCompat;
+import dev.lich.transform.CompatTransformer;
 import org.junit.jupiter.api.Test;
+import org.objectweb.asm.ClassWriter;
+import org.objectweb.asm.MethodVisitor;
+import org.objectweb.asm.Opcodes;
 
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
@@ -115,6 +120,113 @@ class LegacyReflectionTest {
         Color green = (Color) accessor.newInstance(new Object[]{"GREEN", 1});
         assertEquals("GREEN", green.name());
         assertEquals(1, green.ordinal());
+    }
+
+    enum Biome {
+        PLAINS
+    }
+
+    /**
+     * All of {@code EnumHelper.addEnum} as Forge 1.8.9 writes it: the new constant goes into {@code $VALUES}, and
+     * {@code cleanEnumCache} blanks {@code Class.enumConstantDirectory} and {@code Class.enumConstants} (found by name
+     * among {@code Class}'s declared fields), so {@code valueOf}, {@code values} and {@code EnumSet} see it.
+     */
+    @Test
+    void enumHelperResetsTheEnumCaches() throws Exception {
+        assertEquals(Biome.PLAINS, Biome.valueOf("PLAINS")); // Fills both caches first, as the game has by then.
+        assertEquals(1, java.util.EnumSet.allOf(Biome.class).size());
+
+        Constructor<Biome> constructor = Biome.class.getDeclaredConstructor(String.class, int.class);
+        Biome desert = (Biome) ReflectionFactory.getReflectionFactory().newConstructorAccessor(constructor)
+                .newInstance(new Object[]{"DESERT", 1});
+        Field values = null;
+        for (Field field : Biome.class.getDeclaredFields()) {
+            if (field.isSynthetic() && field.getType() == Biome[].class) {
+                values = field;
+            }
+        }
+        assertNotNull(values, "$VALUES");
+        setFailsafeFieldValue(values, null, new Biome[]{Biome.PLAINS, desert});
+        blankField(Biome.class, "enumConstantDirectory");
+        blankField(Biome.class, "enumConstants");
+
+        assertSame(desert, Biome.valueOf("DESERT"));
+        assertEquals(2, Biome.values().length);
+        assertEquals(2, java.util.EnumSet.allOf(Biome.class).size());
+    }
+
+    private static void blankField(Class<?> enumClass, String fieldName) throws Exception {
+        for (Field field : Class.class.getDeclaredFields()) {
+            if (field.getName().contains(fieldName)) {
+                field.setAccessible(true);
+                setFailsafeFieldValue(field, enumClass, null);
+                break;
+            }
+        }
+    }
+
+    /** {@code EnumHelper.setFailsafeFieldValue}, with the names the compat pass gives its calls. */
+    private static void setFailsafeFieldValue(Field field, Object target, Object value) throws Exception {
+        field.setAccessible(true);
+        Field modifiersField = ReflectionShims.getDeclaredField(Field.class, "modifiers");
+        modifiersField.setAccessible(true);
+        int modifiers = ReflectionShims.getInt(modifiersField, field);
+        ReflectionShims.setInt(modifiersField, field, modifiers & ~Modifier.FINAL);
+        ReflectionFactory.getReflectionFactory().newFieldAccessor(field, false).set(target, value);
+    }
+
+    @Test
+    void primitiveSettersWriteStaticFinals() throws Exception {
+        Field count = Primitives.class.getDeclaredField("COUNT");
+        Field enabled = Primitives.class.getDeclaredField("ENABLED");
+        Field scale = Primitives.class.getDeclaredField("SCALE");
+        ReflectionShims.setLong(count, null, 9L); // was count.setLong(null, 9L), without clearing final
+        ReflectionShims.setBoolean(enabled, null, true);
+        ReflectionShims.setInt(scale, null, 3); // int widens to double, as reflection allows
+        assertEquals(9L, count.getLong(null));
+        assertEquals(true, enabled.getBoolean(null));
+        assertEquals(3.0, scale.getDouble(null));
+        assertThrows(IllegalArgumentException.class, () -> ReflectionShims.setDouble(count, null, 1.5));
+        assertThrows(IllegalArgumentException.class,
+                () -> ReflectionShims.setInt(Holder.class.getDeclaredField("THING"), null, 1));
+    }
+
+    /** The compat pass redirects a {@code Field.setLong} in a class that names "modifiers", and the write lands. */
+    @Test
+    void compatPassRedirectsPrimitiveSetters() throws Exception {
+        ClassWriter writer = new ClassWriter(ClassWriter.COMPUTE_FRAMES | ClassWriter.COMPUTE_MAXS);
+        writer.visit(Opcodes.V1_6, Opcodes.ACC_PUBLIC, "test/FinalWriter", null, "java/lang/Object", null);
+        MethodVisitor mv = writer.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "write",
+                "(Ljava/lang/reflect/Field;J)V", null, new String[]{"java/lang/IllegalAccessException"});
+        mv.visitCode();
+        mv.visitLdcInsn("modifiers");
+        mv.visitInsn(Opcodes.POP);
+        mv.visitVarInsn(Opcodes.ALOAD, 0);
+        mv.visitInsn(Opcodes.ACONST_NULL);
+        mv.visitVarInsn(Opcodes.LLOAD, 1);
+        mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "java/lang/reflect/Field", "setLong", "(Ljava/lang/Object;J)V", false);
+        mv.visitInsn(Opcodes.RETURN);
+        mv.visitMaxs(0, 0);
+        mv.visitEnd();
+        writer.visitEnd();
+
+        CompatTransformer compat = JdkCompat.register(CompatTransformer.builder()).build();
+        byte[] redirected = compat.transform("test.FinalWriter", writer.toByteArray());
+        Class<?> finalWriter = new ClassLoader(getClass().getClassLoader()) {
+            Class<?> define() {
+                return defineClass("test.FinalWriter", redirected, 0, redirected.length);
+            }
+        }.define();
+        Field seed = Primitives.class.getDeclaredField("SEED");
+        finalWriter.getMethod("write", Field.class, long.class).invoke(null, seed, 42L);
+        assertEquals(42L, seed.getLong(null));
+    }
+
+    static final class Primitives {
+        static final long SEED = Long.parseLong("0");
+        static final long COUNT = Long.parseLong("1");
+        static final boolean ENABLED = Boolean.parseBoolean("false");
+        static final double SCALE = Double.parseDouble("1");
     }
 
     @Test

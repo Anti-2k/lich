@@ -61,8 +61,10 @@ tasks.compileJava {
             "--add-exports", "java.base/jdk.internal.reflect=ALL-UNNAMED"))
 }
 tasks.test {
+    // As in jvm-flags.txt; java.lang is open for EnumHelper's writes to Class's enum caches.
     jvmArgs("--add-exports", "java.base/jdk.internal.misc=ALL-UNNAMED",
-            "--add-exports", "java.base/jdk.internal.reflect=ALL-UNNAMED")
+            "--add-exports", "java.base/jdk.internal.reflect=ALL-UNNAMED",
+            "--add-opens", "java.base/java.lang=ALL-UNNAMED")
     val lang3: FileCollection = legacyLang3Classpath.get()
     inputs.files(lang3).withPropertyName("legacyLang3")
     jvmArgumentProviders.add(CommandLineArgumentProvider {
