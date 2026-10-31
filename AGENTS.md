@@ -104,9 +104,9 @@ api/                public version-neutral Lich API
 versions/<mc>/      compat-mc, compat-forge, api; Gradle projects are named v1_8_9-compat-mc etc.
 versions/shared/    compat-mc (project shared-compat-mc): game fixes identical in 1.7.10 and 1.8.9;
                     api: sources both per-version api projects compile (no project of its own)
-mods/               first-party Lich mods, not part of the runtime: perf (optimisations)
+mods/               first-party Lich mods, not part of the runtime
 tools/              devlaunch, installer
-test/               testmod, harness
+test/               testmod, multimod, harness
 mcdev/              included build: remap-core and the dev.lich.mod Gradle plugin (Minecraft with MCP names
                     to compile against, refmaps, reobfuscation to SRG) for Lich mods and the api projects
 ```
@@ -126,7 +126,10 @@ Working so far:
 - `remap`: the vanilla profile's obf → SRG remapper. `loader`, `api` and the `versions/<mc>/api` projects: Lich
   mods (`lich.mod.json`, entrypoints, hooks woven on demand); a full client mod runs on them. `mixin-provider`: the Mixin
   Lich mods run on, started only when Lich mods are installed. `testmod`: a Lich mod for 1.8.9 that touches every
-  part of the loader (`:testmod:installDev`).
+  part of the loader (`:testmod:installDev`). `multimod`: one jar for 1.7.10 and 1.8.9, built with the plugin's
+  multi-version mode (`lich { minecraft("1.7.10", "1.8.9") }`, DOCS.md §5.1); its build fails if a shared class
+  links differently on the two versions. Try it without touching a mods folder through
+  `--jvm-arg -Dlich.devMods=<jar>` in `-Plich.args`.
 - `compat-lwjgl2`: LWJGL 2's API on LWJGL 3 (DOCS.md §2.5). LWJGL 2-only classes under their own names
   (`org.lwjgl.opengl.Display`, ...), with their logic in `dev.lich.compat.lwjgl2.display`; `Lwjgl2Compat`'s
   call table for members LWJGL 3 renamed (`renames.txt`, generated) or dropped (the `Lwjgl2*` mirrors).
@@ -154,7 +157,7 @@ Working so far:
   creates Prism instances `<pack>-forge-<mc>` and `<pack>-lich-<mc>`.
   Refresh the `-lich-` ones with `installPrism` after a Lich build.
 
-`perf` is still a placeholder (Phase 8). Each module's build file comment names its phase and DOCS.md section.
+Each module's build file comment names its phase and DOCS.md section.
 
 How Lich's classes load, and where a new class goes:
 - `LichSystemClassLoader` defines everything on the class path. Its compat pass skips `dev.lich.*`, ASM and
@@ -189,12 +192,12 @@ get back the SHA-1 signatures current JDKs ignore (`LegacySignatures`).
 - Keep version-specific code in `versions/<mc>/`. Core modules stay version-neutral, so 1.12.2 can be
   added later as three new modules.
 - **Core doesn't change the game** (DOCS.md §0): a patch to a game class goes in core only if the game
-  needs it to run on Java 25. Optimisations and other improvements go in a Lich mod (`mods/perf`), and
+  needs it to run on Java 25. Improvements go in a Lich mod, and
   whatever those mods need from the game becomes a hook in the API, woven only when a loaded mod
   declares it (§5.2). With no Lich mods, the game plays exactly as vanilla or Forge does on Java 8. The one
   exception is the branding line (`Lich <version> on Java <n>` in the main menu and FML's branding, §0).
 - The version lives in `gradle.properties` (and `mcdev/gradle.properties`); everything shown to players reads it
   from the jars' `Implementation-Version`.
-- **Server safety** (DOCS.md §6): Lich core and the `perf` mod never touch movement/physics, the tick timer,
+- **Server safety** (DOCS.md §6): Lich core never touches movement/physics, the tick timer,
   attack/dig timing, packet timing/content, or `MathHelper`.
 - Don't commit unless asked.

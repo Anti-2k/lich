@@ -66,4 +66,5 @@ module("devlaunch", "tools/devlaunch")
 module("installer", "tools/installer")
 
 module("testmod", "test/testmod")
+module("multimod", "test/multimod")
 module("harness", "test/harness")

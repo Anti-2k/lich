@@ -1,6 +1,6 @@
 // Writes Lich version profiles (version JSON + libraries) into a launcher-style directory, or adds Lich
 // to a Prism instance: for devlaunch and Prism testing (Phase 1), and the player-facing Prism installer jar
-// (installerJar, Phase 9). DOCS.md §4.5, §4.6.
+// (installerJar, Phase 7). DOCS.md §4.5, §4.6.
 plugins {
     id("lich.java")
     application
