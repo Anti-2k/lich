@@ -8,7 +8,10 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /**
  * The reflective calls Forge's ObjectHolderRef and EnumHelper make, written as they are but with the
@@ -66,6 +69,43 @@ class LegacyReflectionTest {
         Object value = new Object();
         ReflectionShims.set(thing, null, value); // was thing.set(null, value)
         assertSame(value, thing.get(null));
+    }
+
+    static final class Blocks {
+        static final Object DRAGON_EGG = new Object();
+        static final long SEED = Long.parseLong("1");
+    }
+
+    /**
+     * HardcoreEnderExpansion clears {@code final} in one class ({@code Unfinalizer}, whose {@code setInt} the compat
+     * pass redirects) and writes the field in another ({@code BlockReplaceHelper}), with a plain {@code Field.set}.
+     */
+    @Test
+    void fieldSetWritesAStaticFinalUnfinalizedElsewhere() throws Exception {
+        Field modifiersField = ReflectionShims.getDeclaredField(Field.class, "modifiers");
+        modifiersField.setAccessible(true);
+
+        Field egg = Blocks.class.getDeclaredField("DRAGON_EGG");
+        assertNotNull(egg.get(null)); // Caches the JDK's accessor first, as HEE's search through Blocks does.
+        egg.setAccessible(true);
+        int modifiers = ReflectionShims.getInt(modifiersField, egg);
+        assertEquals(egg.getModifiers(), modifiers);
+        ReflectionShims.setInt(modifiersField, egg, modifiers & ~Modifier.FINAL);
+        assertFalse(Modifier.isFinal(egg.getModifiers()));
+        Object replacement = new Object();
+        egg.set(null, replacement);
+        assertSame(replacement, egg.get(null));
+        assertSame(replacement, Blocks.DRAGON_EGG);
+
+        // Without setAccessible, and with reflection's widening and type checks.
+        Field seed = Blocks.class.getDeclaredField("SEED");
+        ReflectionShims.setInt(modifiersField, seed, seed.getModifiers() & ~Modifier.FINAL);
+        seed.setInt(null, 5);
+        assertEquals(5L, seed.getLong(null));
+        assertEquals(5.0, seed.getDouble(null));
+        assertThrows(IllegalArgumentException.class, () -> seed.getInt(null));
+        assertThrows(IllegalArgumentException.class, () -> seed.set(null, "5"));
+        assertThrows(IllegalArgumentException.class, () -> seed.set(null, null));
     }
 
     @Test

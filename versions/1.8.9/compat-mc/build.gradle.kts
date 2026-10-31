@@ -8,4 +8,6 @@ plugins {
 dependencies {
     implementation(project(":transform"))
     implementation(project(":shared-compat-mc"))
+    testImplementation(libs.asm)
+    testImplementation(libs.asm.tree)
 }

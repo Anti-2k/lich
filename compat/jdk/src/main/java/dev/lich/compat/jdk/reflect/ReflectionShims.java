@@ -6,11 +6,13 @@ import java.lang.reflect.Modifier;
 /**
  * Redirect targets for the "clear {@code final} through {@code Field.modifiers}" hack. Java 12 hides
  * {@code Field.modifiers} from reflection, so the hack throws {@code NoSuchFieldException}. Lich hands
- * out a dummy field instead, and makes the {@code Field.set} that follows write the final field anyway.
- * The compat pass only redirects these calls in classes that contain the string "modifiers".
+ * out a dummy field instead: reading and writing it through {@code getInt}/{@code setInt} (or {@code set})
+ * reads and writes the target field's modifiers, and clearing {@code final} makes that field writable
+ * ({@link UnfinalizedFields}). A {@code Field.set} redirected here writes a {@code static final} field
+ * anyway. The compat pass only redirects these calls in classes that contain the string "modifiers".
  */
 public final class ReflectionShims {
-    /** What old code gets for {@code Field.modifiers}; writes to it go nowhere. */
+    /** What old code gets for {@code Field.modifiers}; the redirects below never let a write land here. */
     @SuppressWarnings("unused")
     private static int modifiers;
 
@@ -35,10 +37,28 @@ public final class ReflectionShims {
     }
 
     public static void set(Field field, Object target, Object value) throws IllegalAccessException {
-        if (Modifier.isStatic(field.getModifiers()) && Modifier.isFinal(field.getModifiers())) {
+        if (field == DUMMY_MODIFIERS && target instanceof Field written && value instanceof Integer newModifiers) {
+            UnfinalizedFields.setModifiers(written, newModifiers);
+        } else if (Modifier.isStatic(field.getModifiers()) && Modifier.isFinal(field.getModifiers())) {
             UnsafeFields.set(field, target, value);
         } else {
             field.set(target, value);
         }
+    }
+
+    public static void setInt(Field field, Object target, int value) throws IllegalAccessException {
+        if (field == DUMMY_MODIFIERS && target instanceof Field written) {
+            UnfinalizedFields.setModifiers(written, value);
+        } else {
+            field.setInt(target, value);
+        }
+    }
+
+    /** Old code reads the modifiers it is about to change this way as often as through {@code getModifiers()}. */
+    public static int getInt(Field field, Object target) throws IllegalAccessException {
+        if (field == DUMMY_MODIFIERS && target instanceof Field read) {
+            return read.getModifiers();
+        }
+        return field.getInt(target);
     }
 }

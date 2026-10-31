@@ -35,6 +35,15 @@ class MouseFieldsTest {
         assertEquals(44, Mouse.getEventY());
     }
 
+    /** Witching Gadgets takes {@code Mouse.class.getDeclaredFields()[17]} for {@code readBuffer}, as in LWJGL 2.9. */
+    @Test
+    void fieldsAreInLwjgl2sOrder() {
+        Field[] fields = Mouse.class.getDeclaredFields();
+        assertEquals("EVENT_SIZE", fields[0].getName());
+        assertEquals("readBuffer", fields[17].getName());
+        assertEquals("clipMouseCoordinatesToWindow", fields[34].getName());
+    }
+
     /** TC4Tweak checks {@code readBuffer.hasRemaining()} for mouse events the game hasn't read yet. */
     @Test
     void readBufferHoldsThePendingEventsInLwjgl2sLayout() throws Exception {

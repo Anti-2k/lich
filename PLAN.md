@@ -188,6 +188,18 @@ Never redistribute Minecraft or patched Forge binaries. Patch at load time, or o
   every time, while Java 8 narrowly wins it. `shared-compat-mc`'s `SoundLoaderRace` makes a reload wait
   for the loader thread. It runs in the Forge profile only (SRG names) until the vanilla profile has
   them too (Phase 5).
+- **Shutdown race in 1.8.9's `IntegratedServer.initiateShutdown`**: "Save and Quit" sends the disconnect, then
+  queues a log-out task for the server thread and waits for it. If the server has already seen the disconnect and
+  left its tick loop, the task never runs and the client freezes on "Saving world" for good. Vanilla's race (the
+  Java 8 baseline froze once in two packs), but Lich froze 2 of 2 (found 2026-10-31, CubeSoft and SolitaryCraft
+  VanillaPlus). `v1_8_9-compat-mc`'s `ShutdownRace` ends the wait once `isServerStopped()`: stopping has saved
+  and removed the players by then, which is all the task does. 1.7.10 has no such task. **(verify)** with a few
+  1.8.9 packs in world mode.
+- **User-Agent** (found 2026-10-31, Survival Industry): `HttpURLConnection` sends `Java/<version>`, and Cloudflare
+  answers Java 8 and Java 25 differently: pastebin refuses `Java/1.8.0_*` with a 403, which mods catch, but redirects
+  `Java/25` to HTTPS with an HTML page, which LLibrary 1.5.1 parsed as its patron list and crashed on in mod
+  construction. Boot sets `http.agent` to `Java/1.8.0_51` (the Java Mojang's launcher shipped) unless the user set
+  one, so requests say `Java/1.8.0_51 Java/25...` and get Java 8's answers.
 - **Access token in the game log (to fix)**: vanilla 1.7.10 and 1.8.9 log `(Session ID is token:<access
   token>:<uuid>)` at startup, in plain text in `logs/latest.log`, which users paste into support
   chats. Forge 1.8.9's patched `Main` drops the line; vanilla and Forge 1.7.10 don't. Lich should
@@ -231,7 +243,9 @@ Never redistribute Minecraft or patched Forge binaries. Patch at load time, or o
   discovery doesn't find it twice. Lich's `getSources()` hides Lich's jars and returned a copy, so the removal was
   lost and FML stopped on "Found a duplicate mod". It's a live view now (`VisibleSources`).
 - **JDK-internal ImageIO**: Decocraft's model loader (CraftStudio) constructs `com.sun.imageio.plugins.png.PNGImageReader`;
-  one more `--add-exports` in `jvm-flags.txt` (FTB SkyFactory 2.5).
+  one more `--add-exports` in `jvm-flags.txt` (FTB SkyFactory 2.5). JourneyMap 5.1's `PixelPaint` writes map tiles
+  through `sun.awt.image.IntegerComponentRaster`, and without the export every chunk it renders fails (found
+  2026-10-31, LOTR Survival and Lucky Block: thousands of "Error rendering chunk"); another `--add-exports`.
 - **Mods that hash ASM's text output** (found 2026-10-27, FTB Infinity Evolved): Logistics Pipes recognizes Thermal
   Dynamics' item duct renderer by a SHA-1 of `Textifier`'s dump of one method, and stops the game when it doesn't
   know the hash. ASM 6+ prints interface calls with `(itf)` and number constants with a type suffix, so under Lich's
@@ -315,7 +329,12 @@ Never redistribute Minecraft or patched Forge binaries. Patch at load time, or o
     move the position the game sees while it draws an overlay; without them it crashed the game seconds after
     joining a world (found 2026-10-27 by the modpack harness, SkyBlock Enhanced). `Mouse.readBuffer` holds the
     events `next` hasn't returned yet, in LWJGL 2's 22-byte layout: TC4Tweak checks it for pending events
-    (The Lost Era).
+    (The Lost Era). `Mouse` declares all 35 of LWJGL 2.9's fields in its order, the unused ones too, because
+    Witching Gadgets takes `getDeclaredFields()[17]` for `readBuffer` (found 2026-10-31, GT New Horizons: an
+    `ArrayIndexOutOfBoundsException` at init, then a null buffer when the Thaumonomicon search opens).
+  - **`org.lwjgl.MemoryUtil`** (LWJGL 2's buffer addresses and string encoding; found 2026-10-31, GT New Horizons):
+    Angelica's Sodium writes vertex data through `getAddress`, and without the class the game crashed on joining a
+    world. Lich's copy has LWJGL 2's whole public API, on LWJGL 3's `org.lwjgl.system.MemoryUtil`.
   - **Tested (Windows x64):** vanilla 1.8.9 to the main menu; Forge 1.7.10 and 1.8.9 through the
     loading screen into a local server; typing in chat (shift, punctuation, backspace), turning the
     camera, clicking menus, F11 fullscreen and back; the mod corpus (§7). **(verify)** Linux X11/Wayland,
@@ -455,8 +474,12 @@ mods copied: the string constants `"sun.reflect.ReflectionFactory"` (only in cla
 the same reflective lookups land on Lich's methods. Field accessors write through
 `jdk.internal.misc.Unsafe`; constructor accessors call a method handle, which works for enum
 constructors. In classes containing `"modifiers"`, `Class.getDeclaredField` hands out a dummy for
-`Field.modifiers` and `Field.set` writes static finals. Still to do (Phase 4): the `Field.set<Primitive>`
-variants, resetting `enumConstantDirectory` when EnumHelper adds constants (verify with a mod that uses
+`Field.modifiers` and `Field.set` writes static finals. `getInt`/`setInt` (and `set`) on the dummy read and write
+the target `Field`'s own modifiers, as on Java 8, and clearing `final` gives that `Field` an accessor that writes
+through `Unsafe` (`UnfinalizedFields`, which implements `jdk.internal.reflect.FieldAccessor`), so a plain
+`Field.set` anywhere afterwards works. HardcoreEnderExpansion clears the flag in one class and writes in
+another, and stopped in pre-init without it (found 2026-10-31, Tekxit 2). Still to do (Phase 4): the
+`Field.set<Primitive>` variants in classes that write without clearing `final`, resetting `enumConstantDirectory` when EnumHelper adds constants (verify with a mod that uses
 it), and other spellings of the hack found in the mod corpus.
 
 The original design:

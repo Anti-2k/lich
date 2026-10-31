@@ -43,6 +43,10 @@ public final class JdkCompat {
                         REFLECT + "ReflectionShims", "modifiers")
                 .redirect("java/lang/reflect/Field", "set", "(Ljava/lang/Object;Ljava/lang/Object;)V",
                         REFLECT + "ReflectionShims", "modifiers")
+                .redirect("java/lang/reflect/Field", "setInt", "(Ljava/lang/Object;I)V",
+                        REFLECT + "ReflectionShims", "modifiers")
+                .redirect("java/lang/reflect/Field", "getInt", "(Ljava/lang/Object;)I",
+                        REFLECT + "ReflectionShims", "modifiers")
                 // Java 9+ rejects null URLs, which Java 8's URLClassLoader kept (UrlClassLoaders).
                 .filterFirstArgument("java/net/URLClassLoader", "<init>", "([Ljava/net/URL;)V", SHIMS + "UrlClassLoaders", "withoutNulls")
                 .filterFirstArgument("java/net/URLClassLoader", "<init>", "([Ljava/net/URL;Ljava/lang/ClassLoader;)V",

@@ -18,7 +18,9 @@ class PackTest {
         Map<String, List<String>> keys = Map.of(
                 "mrpack", List.of("url", "sha512"),
                 "solder", List.of("api", "slug", "build"),
-                "ftb", List.of("pack", "version"));
+                "ftb", List.of("pack", "version"),
+                "zip", List.of("url", "sha512"),
+                "atlauncher", List.of("pack", "version"));
         for (Pack pack : Pack.all().values()) {
             List<String> needed = keys.get(pack.source().type());
             assertTrue(needed != null, pack.id() + ": unknown source type " + pack.source().type());

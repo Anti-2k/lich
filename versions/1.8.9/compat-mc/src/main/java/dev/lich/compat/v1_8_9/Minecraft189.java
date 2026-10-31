@@ -10,6 +10,7 @@ public final class Minecraft189 {
 
     /** Patches for classes that FML has already patched and deobfuscated to SRG names. */
     public static CompatTransformer.Builder registerSrgPatches(CompatTransformer.Builder builder) {
-        return builder.patch(SoundLoaderRace.CLASS, new SoundLoaderRace());
+        return builder.patch(SoundLoaderRace.CLASS, new SoundLoaderRace())
+                .patch(ShutdownRace.CLASS, new ShutdownRace());
     }
 }

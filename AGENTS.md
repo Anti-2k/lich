@@ -124,7 +124,7 @@ Working so far:
   `PrismComponent` writes Prism components.
 - `devlaunch`.
 - `harness` (`test/harness`): Forge mod compatibility through whole modpacks, pinned in `packs.json` (Modrinth, Technic
-  Solder or FTB sources; PLAN.md §7). `./gradlew :harness:runPack "-Plich.pack=lost-era" "-Plich.mc=1.7.10"` runs the pack on Forge/Java 8
+  Solder or zip, FTB or ATLauncher sources; PLAN.md §7). `./gradlew :harness:runPack "-Plich.pack=lost-era" "-Plich.mc=1.7.10"` runs the pack on Forge/Java 8
   and Lich/Java 25 against the local test server, and writes `run/harness/<pack>/report.md`, which lists what only
   one side logged. `-Plich.profiles=lich-forge` reruns Lich alone. `:harness:worldPack` (same options) plays a
   singleplayer world instead (create, tour, hold, save, reopen) through a driver tweaker, and writes `world-report.md`;

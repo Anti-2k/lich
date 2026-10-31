@@ -21,6 +21,8 @@
 --add-opens=java.desktop/java.awt=ALL-UNNAMED
 # Decocraft's model loader (CraftStudio's ImageIOCS) builds ImageIO's PNG reader directly.
 --add-exports=java.desktop/com.sun.imageio.plugins.png=ALL-UNNAMED
+# JourneyMap 5.1 paints map tiles straight into an image's IntegerComponentRaster (PixelPaint).
+--add-exports=java.desktop/sun.awt.image=ALL-UNNAMED
 # For Lich's reflection compat layer (final fields, enum constants) in later phases.
 --add-exports=java.base/jdk.internal.misc=ALL-UNNAMED
 --add-exports=java.base/jdk.internal.reflect=ALL-UNNAMED

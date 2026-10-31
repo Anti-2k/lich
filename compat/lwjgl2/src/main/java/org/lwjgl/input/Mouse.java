@@ -8,6 +8,7 @@ import org.lwjgl.opengl.Display;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.nio.IntBuffer;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -20,25 +21,57 @@ import java.util.Map;
  * {@link #setCursorPosition} and grabbing. Essential sets them by reflection to move the position the game sees while
  * it draws an overlay, which then holds until the next refresh, as on LWJGL 2. Likewise {@code readBuffer} holds the
  * events {@link #next} hasn't returned yet, in LWJGL 2's layout: TC4Tweak checks it for pending events.
+ *
+ * <p>The class declares all of LWJGL 2.9's fields, by name and in its order, because mods index
+ * {@code getDeclaredFields()}: Witching Gadgets takes element 17 for {@code readBuffer}. Those this class doesn't use
+ * keep their defaults.
  */
+@SuppressWarnings("unused")
 public class Mouse {
     public static final int EVENT_SIZE = 1 + 1 + 4 + 4 + 4 + 8;
 
-    private static final String[] BUTTON_NAMES = new String[16];
-    private static final Map<String, Integer> BUTTON_INDICES = new HashMap<>(16);
-    private static Cursor currentCursor;
+    private static boolean created;
+    private static ByteBuffer buttons;
     private static int x;
     private static int y;
-    private static int event_x;
-    private static int event_y;
+    private static int absolute_x;
+    private static int absolute_y;
+    private static IntBuffer coord_buffer;
+    private static int dx;
+    private static int dy;
+    private static int dwheel;
+    private static int buttonCount = -1;
+    private static boolean hasWheel;
+    private static Cursor currentCursor;
+    private static String[] buttonName = new String[16];
+    private static final Map<String, Integer> buttonMap = new HashMap<>(16);
+    private static boolean initialized;
     // Not final, direct and in native order, as LWJGL 2 made it (BufferUtils).
     private static ByteBuffer readBuffer = ByteBuffer.allocateDirect(EVENT_SIZE * MouseInput.MAX_EVENTS)
             .order(ByteOrder.nativeOrder());
+    private static int eventButton;
+    private static boolean eventState;
+    private static int event_dx;
+    private static int event_dy;
+    private static int event_dwheel;
+    private static int event_x;
+    private static int event_y;
+    private static long event_nanos;
+    private static int grab_x;
+    private static int grab_y;
+    private static int last_event_raw_x;
+    private static int last_event_raw_y;
+    private static final int BUFFER_SIZE = 50;
+    private static boolean isGrabbed;
+    /** LWJGL 2's {@code org.lwjgl.opengl.InputImplementation}, which Lich doesn't have. */
+    private static Object implementation;
+    private static final boolean emulateCursorAnimation = false;
+    private static boolean clipMouseCoordinatesToWindow = true;
 
     static {
-        for (int i = 0; i < BUTTON_NAMES.length; i++) {
-            BUTTON_NAMES[i] = "BUTTON" + i;
-            BUTTON_INDICES.put(BUTTON_NAMES[i], i);
+        for (int i = 0; i < buttonName.length; i++) {
+            buttonName[i] = "BUTTON" + i;
+            buttonMap.put(buttonName[i], i);
         }
     }
 
@@ -118,11 +151,11 @@ public class Mouse {
     }
 
     public static String getButtonName(int button) {
-        return button >= 0 && button < BUTTON_NAMES.length ? BUTTON_NAMES[button] : null;
+        return button >= 0 && button < buttonName.length ? buttonName[button] : null;
     }
 
-    public static int getButtonIndex(String buttonName) {
-        Integer index = BUTTON_INDICES.get(buttonName);
+    public static int getButtonIndex(String name) {
+        Integer index = buttonMap.get(name);
         return index == null ? -1 : index;
     }
 

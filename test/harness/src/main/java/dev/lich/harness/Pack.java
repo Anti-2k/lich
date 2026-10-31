@@ -37,7 +37,13 @@ record Pack(String id, String name, String mc, String forge, Source source, int 
      *     <li>{@code solder}: a build of a Technic pack on a Solder API ({@code api}, {@code slug}, {@code build}),
      *     whose mods are zips (MD5) unpacked into the game directory in order.</li>
      *     <li>{@code ftb}: a version of an FTB pack ({@code pack}, {@code version} ids), files with SHA-1s.</li>
+     *     <li>{@code zip}: a Technic pack that is one client zip, not on Solder ({@code url}, {@code sha512}, which
+     *     the pin adds: Technic gives none), laid out like a Solder mod zip.</li>
+     *     <li>{@code atlauncher}: a version of an ATLauncher pack ({@code pack} safe name, {@code version}), mods with
+     *     MD5s from its {@code Configs.json}.</li>
      * </ul>
+     * Any source may also give {@code packForge}: the Forge the pack itself names, when it isn't the one the dev
+     * profile runs ({@code forge}). The pack runs on the newer build, as most 1.7.10 packs do in practice.
      */
     record Source(String type, Map<String, String> values) {
         String get(String key) {
@@ -48,12 +54,19 @@ record Pack(String id, String name, String mc, String forge, Source source, int 
             return value;
         }
 
+        /** The Forge the pack names for itself: {@code packForge} if given, else the one that runs. */
+        String packForge(String runForge) {
+            return values.getOrDefault("packForge", runForge);
+        }
+
         /** Where the pack comes from, for people. */
         String describe() {
             return switch (type) {
                 case "mrpack" -> get("url");
                 case "solder" -> "Technic pack " + get("slug") + " build " + get("build") + " (" + get("api") + ")";
                 case "ftb" -> "FTB pack " + get("pack") + " version " + get("version");
+                case "zip" -> get("url");
+                case "atlauncher" -> "ATLauncher pack " + get("pack") + " version " + get("version");
                 default -> type;
             };
         }
