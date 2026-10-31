@@ -9,7 +9,9 @@ import org.apache.logging.log4j.core.config.Configuration;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Runs against log4j 2.0-beta9, the version 1.7.10/1.8.9 ship. No other test in this JVM touches log4j,
@@ -30,5 +32,22 @@ class SafeLoggingTest {
         Logger logger = context.getLogger("test");
         assertEquals(Filter.Result.DENY, rootFilter.filter(logger, Level.INFO, null, "chat: ${jndi:ldap://127.0.0.1:1/x}"));
         assertEquals(Filter.Result.NEUTRAL, rootFilter.filter(logger, Level.INFO, null, "an ordinary message"));
+    }
+
+    @Test
+    void sessionLineIsDroppedAfterAReconfigurationToo() {
+        if (System.getProperty("log4j.configurationFile") == null) {
+            Main.ensureSafeLogging();
+        }
+        SessionLogFilter.install(new String[]{"--accessToken", "0123456789abcdef0123456789abcdef"});
+        LoggerContext context = (LoggerContext) LogManager.getContext(false);
+        Logger logger = context.getLogger("net.minecraft.client.Minecraft");
+        assertFalse(logger.isEnabled(Level.INFO, null, "(Session ID is token:0123456789abcdef0123456789abcdef:1234)"));
+        assertTrue(logger.isEnabled(Level.INFO, null, "Setting user: Dev"));
+
+        context.reconfigure();
+        assertFalse(logger.isEnabled(Level.INFO, null, "(Session ID is token:0123456789abcdef0123456789abcdef:1234)"));
+        assertFalse(logger.isEnabled(Level.WARN, null, "retrying with 0123456789abcdef0123456789abcdef"));
+        assertTrue(logger.isEnabled(Level.INFO, null, "Setting user: Dev"));
     }
 }

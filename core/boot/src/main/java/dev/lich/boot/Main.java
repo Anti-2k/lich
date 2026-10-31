@@ -35,7 +35,8 @@ import java.util.stream.Stream;
 
 /**
  * Lich's main class, named by the version JSON instead of LaunchWrapper's. It refuses to start
- * without the JVM flags Lich needs, makes sure log4j runs with a Log4Shell-safe config, installs the
+ * without the JVM flags Lich needs, makes sure log4j runs with a Log4Shell-safe config that keeps the
+ * access token out of the log, installs the
  * compat pass, picks the profile, and then runs Lich's LaunchWrapper with the same arguments the
  * vanilla launcher would pass.
  */
@@ -60,6 +61,7 @@ public final class Main {
             System.exit(1);
         }
         ensureSafeLogging();
+        SessionLogFilter.install(args);
         ensureJava8UserAgent();
 
         Logger log = LogManager.getLogger("Lich");

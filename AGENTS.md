@@ -98,22 +98,32 @@ build-logic/        convention plugin `lich.java` (Java 25, UTF-8, -Xlint:all)
 core/               boot, launchwrapper, transform, remap, loader, mixin-provider
 compat/             jdk (removed-API shims, reflection compat), asm (ASM 5 on ASM 9), lwjgl2 (LWJGL 2 API on LWJGL 3)
 api/                public version-neutral Lich API
-versions/<mc>/      compat-mc, compat-forge, api-impl; Gradle projects are named v1_8_9-compat-mc etc.
-versions/shared/    compat-mc (project shared-compat-mc): game fixes identical in 1.7.10 and 1.8.9
+versions/<mc>/      compat-mc, compat-forge, api; Gradle projects are named v1_8_9-compat-mc etc.
+versions/shared/    compat-mc (project shared-compat-mc): game fixes identical in 1.7.10 and 1.8.9;
+                    api: sources both per-version api projects compile (no project of its own)
 mods/               first-party Lich mods, not part of the runtime: perf (optimisations)
 tools/              devlaunch, installer
 test/               testmod, harness
+mcdev/              included build: remap-core and the dev.lich.mod Gradle plugin (Minecraft with MCP names
+                    to compile against, refmaps, reobfuscation to SRG) for Lich mods and the api projects
 ```
 
 Working so far:
 - `launchwrapper`: Lich's LaunchWrapper 1.12 (`net.minecraft.launchwrapper.*`), plus
   `dev.lich.launchwrapper` for the launch logic, hooks, Lich's first/last transformers and `LichSources`.
 - `boot`: `dev.lich.boot.Main` (flag check, safe logging, compat pass, profile, vanilla tweaker) and
-  `LichSystemClassLoader`, the JVM's system class loader under Lich.
+  `LichSystemClassLoader`, the JVM's system class loader under Lich. Safe logging is the Log4Shell-safe config
+  plus `SessionLogFilter`, which keeps the access token out of every log4j context; boot also sends a Java 8
+  `http.agent` (PLAN.md §2.4).
 - `transform`: the compat pass, `CompatTransformer`. `compat-jdk` and `compat-asm` hold the shims and
   register their rules with it (`JdkCompat`, `AsmCompat`).
 - `shared-compat-mc`, `v1_7_10-compat-mc` and `v1_8_9-compat-mc`: game fixes on SRG names, run as
-  Lich's last transformer in the Forge profile.
+  Lich's last transformer in both profiles (the vanilla profile needs MCP's mappings for SRG names).
+  `v1_7_10-compat-forge`/`v1_8_9-compat-forge`: hide Lich mods from FML's discovery.
+- `remap`: the vanilla profile's obf → SRG remapper. `loader`, `api` and the `versions/<mc>/api` projects: Lich
+  mods (`lich.mod.json`, entrypoints, hooks woven on demand); a full client mod runs on them. `mixin-provider`: the Mixin
+  Lich mods run on, started only when Lich mods are installed. `testmod`: a Lich mod for 1.8.9 that touches every
+  part of the loader (`:testmod:installDev`).
 - `compat-lwjgl2`: LWJGL 2's API on LWJGL 3 (PLAN.md §2.5). LWJGL 2-only classes under their own names
   (`org.lwjgl.opengl.Display`, ...), with their logic in `dev.lich.compat.lwjgl2.display`; `Lwjgl2Compat`'s
   call table for members LWJGL 3 renamed (`renames.txt`, generated) or dropped (the `Lwjgl2*` mirrors).
@@ -133,16 +143,17 @@ Working so far:
   creates Prism instances `<pack>-forge-<mc>` and `<pack>-lich-<mc>` (none exist now; the user had them deleted).
   Refresh the `-lich-` ones with `installPrism` after a Lich build.
 
-The other modules are placeholders. Each one's build file comment names its phase and PLAN.md section.
+`perf` is still a placeholder (Phase 8). Each module's build file comment names its phase and PLAN.md section.
 
 How Lich's classes load, and where a new class goes:
 - `LichSystemClassLoader` defines everything on the class path. Its compat pass skips `dev.lich.*`, ASM and
   the jars Lich ships (its own, LWJGL 3, Nashorn). It also drops LWJGL 2 when LWJGL 3 and `compat-lwjgl2` are there.
 - LaunchWrapper itself excludes `org.lwjgl.`, so `compat-lwjgl2`'s `org.lwjgl.*` classes, like LWJGL 3's,
   come from the system class loader: one copy each.
-- Boot makes `dev.lich.boot.`, `.launchwrapper.`, `.transform.` and `.compat.` class loader exclusions,
-  plus `org.objectweb.asm.` (one ASM for everyone). So shims that game or mod code calls must live under
-  `dev.lich.compat.`, and there is one copy of each, whichever loader the caller comes from.
+- Boot makes `dev.lich.boot.`, `.launchwrapper.`, `.transform.`, `.compat.`, `.remap.`, `.loader.` and `.mixin.`
+  class loader exclusions, plus `org.objectweb.asm.` (one ASM for everyone). So shims that game or mod code calls
+  must live under `dev.lich.compat.`, and there is one copy of each, whichever loader the caller comes from. The
+  Lich API (`dev.lich.api`) is not excluded: it loads in LaunchClassLoader, next to the game and the mods.
 - Patches to game classes run *last*, keyed on SRG names: running them first would change the bytes
   that Forge's binpatches checksum.
 - Lich's jars and ASM 9 are hidden from FML's mod discovery (`LichSources`), because FML's ASM-5-API
@@ -152,12 +163,12 @@ How Lich's classes load, and where a new class goes:
 LaunchWrapper compatibility rule: `LaunchClassLoader` keeps 1.12's private fields by name and type,
 because Mixin, coremods and FoamFix-style mods reflect on them (`LaunchClassLoaderTest` pins them). Lich
 code doesn't add public API to the `net.minecraft.launchwrapper` classes. Hooks go in `dev.lich.launchwrapper`.
-Five deliberate differences: Lich's first and last transformers also run on transformer-excluded classes,
-`getSources()` leaves out `LichSources` (a live view: mods remove entries through it), `LichExclusions` (`org.lwjgl.` on LWJGL 3) hold even when a
-mod removes the same prefix from `classLoaderExceptions` (OneConfig does), and ImageIO's provider lists
-(`META-INF/services/javax.imageio.spi.*`) leave out classes that aren't there (`ImageIoProviders`: Java 8 skipped
-them under FML's SecurityManager), and jars pinned in `legacy-signed-jars.txt` get the SHA-1 signatures current
-JDKs ignore back (`LegacySignatures`).
+Five deliberate differences (PLAN.md §4.2): Lich's first and last transformers also run on transformer-excluded
+classes; `getSources()` leaves out `LichSources` (a live view: mods remove entries through it); `LichExclusions`
+(`org.lwjgl.` on LWJGL 3) hold even when a mod removes the same prefix from `classLoaderExceptions` (OneConfig
+does); ImageIO's provider lists (`META-INF/services/javax.imageio.spi.*`) leave out classes that aren't there
+(`ImageIoProviders`: Java 8 skipped them under FML's SecurityManager); and jars pinned in `legacy-signed-jars.txt`
+get back the SHA-1 signatures current JDKs ignore (`LegacySignatures`).
 
 ## Conventions
 
