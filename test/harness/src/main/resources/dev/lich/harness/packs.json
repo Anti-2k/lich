@@ -111,7 +111,8 @@
       "url": "https://cdn.modrinth.com/data/9C9Ggaka/versions/UmTbNCcZ/1.8%20PvP%20Pack%20Version%206%20-%20hotfix.mrpack",
       "sha512": "ba0427cd9ebef4e0ef138e77ccb73c012eaa6b35ca2815e90c5c521b3e01adbe60ef14daffeeffd0b95d293207ad573814bea2ed701bf7b6b960103965363a22"
     },
-    "memoryMb": 3072
+    "memoryMb": 3072,
+    "tags": ["quick"]
   },
   "gt-new-horizons": {
     "name": "GT New Horizons 2.8.4",
@@ -145,7 +146,8 @@
       "url": "https://cdn.modrinth.com/data/qBEuLzgI/versions/mkpBiNvZ/Automation%20Of%20HBM%27s%20Nuclear%20Tech%20beta%201.1.8.mrpack",
       "sha512": "f32fcbcdcb198fa3cd628f23d00cb476a930c4bf29e376c7185650688ed5063b3f87359a9dd5f4d8485dd05857387f73c9e3ee10ec09e6f1f4956f54657a8a25"
     },
-    "memoryMb": 4096
+    "memoryMb": 4096,
+    "tags": ["quick"]
   },
   "tekxit-2": {
     "name": "Tekxit 2 v2.25ra2",
@@ -180,7 +182,8 @@
       "sha512": "88bd69ad838ade35cdeceeeca0d419602b00c5fca3ab82c81e58af16b1c8931ee59d58af84255e2e1d55d4e4a66802f863b162a041c97e82762a303759ab156b",
       "packForge": "10.13.4.1558"
     },
-    "memoryMb": 4096
+    "memoryMb": 4096,
+    "tags": ["quick"]
   },
   "ultimate-warfare": {
     "name": "Ultimate Warfare 1.7.10 #19",
@@ -191,7 +194,8 @@
       "url": "https://www.dropbox.com/s/7t6ojjbhbbnbdhp/Ultimate%20Warfare%20Base%20Pack.zip?dl=1",
       "sha512": "e2ad0ae9bcd4e5a79040ccd79d484dce89ea8a9194b886d83f6d6e7a90c03311ffe5a3cb61622d4af7f80dbd5317bb9af782d65bfa2e1595daeee64788d0c891"
     },
-    "memoryMb": 4096
+    "memoryMb": 4096,
+    "skip": "its mods download CodeChickenLib, ForgeMultipart and bspkrsCore at launch from hosts that are gone, and bspkrsCore opens an error dialog on the desktop"
   },
   "survival-industry": {
     "name": "Survival Industry 1.7.0",
@@ -237,7 +241,8 @@
       "version": "EldritchRevolution3.20.20161014",
       "packForge": "11.15.1.1902"
     },
-    "memoryMb": 3072
+    "memoryMb": 3072,
+    "skip": "Thaumcraft's loader downloads Baubles at launch from a dead Dropbox link"
   },
   "solitarycraft-vanillaplus": {
     "name": "SolitaryCraft VanillaPlus",
@@ -249,7 +254,8 @@
       "version": "VanillaPlus",
       "packForge": "11.15.1.1736"
     },
-    "memoryMb": 3072
+    "memoryMb": 3072,
+    "tags": ["quick"]
   },
   "all-lucky-block": {
     "name": "Lucky Block Add On 1.8.9 1.5.1",

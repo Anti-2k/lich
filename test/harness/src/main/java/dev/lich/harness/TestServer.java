@@ -9,21 +9,17 @@ import java.net.ServerSocket;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.Duration;
-import java.util.List;
-import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
-import java.util.function.Predicate;
 
 /**
- * The local vanilla test server ({@code run/server-<mc>}, offline mode, bound to 127.0.0.1), started on Java 8 for a
- * harness run. Its console tells the harness when the client logged in and whether it lost the connection, which is
- * the same on every client profile, unlike the client's own log.
+ * The local vanilla test server ({@code run/server-<mc>}, offline mode, bound to 127.0.0.1), started on Java 8 for the
+ * scenario's {@code server} step. It starts while the first game boots; the driver waits for its port before
+ * connecting. Its console goes to {@code run/harness/server-<mc>.out}.
  */
 final class TestServer implements AutoCloseable {
     private final Process process;
-    private final List<String> lines = new CopyOnWriteArrayList<>();
     private final Writer console;
+    private volatile boolean ready;
 
     private TestServer(Process process, Path consoleLog) throws IOException {
         this.process = process;
@@ -31,7 +27,9 @@ final class TestServer implements AutoCloseable {
         Thread reader = new Thread(() -> {
             try (BufferedReader in = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
                 for (String line; (line = in.readLine()) != null; ) {
-                    lines.add(line);
+                    if (line.contains("Done (")) {
+                        ready = true;
+                    }
                     synchronized (console) {
                         console.write(line);
                         console.write(System.lineSeparator());
@@ -54,60 +52,34 @@ final class TestServer implements AutoCloseable {
         };
     }
 
-    static TestServer start(Path runDir, String mc, Path java8, Path consoleLog) throws IOException, InterruptedException {
+    /** Whether {@code run/server-<mc>} has a server to start. */
+    static boolean available(Path runDir, String mc) {
+        return Files.isRegularFile(runDir.resolve("server-" + mc).resolve("server.jar"));
+    }
+
+    static TestServer start(Path runDir, String mc, Path java8) throws IOException {
         Path dir = runDir.resolve("server-" + mc);
-        if (!Files.isRegularFile(dir.resolve("server.jar"))) {
+        if (!available(runDir, mc)) {
             throw new IOException("No test server in " + dir + " (see AGENTS.md: vanilla server.jar, offline mode, 127.0.0.1)");
         }
         int port = port(mc);
-        // Someone else's server on the port would get the client instead, and the harness couldn't read its console.
+        // Someone else's server on the port would get the client instead.
         try (ServerSocket probe = new ServerSocket(port, 1, InetAddress.getLoopbackAddress())) {
             probe.getLocalPort();
         } catch (IOException e) {
             throw new IOException("Port " + port + " is in use; stop the server on it first", e);
         }
-        log("Starting the " + mc + " test server on port " + port);
+        System.out.println("[harness] Starting the " + mc + " test server on port " + port);
         Process process = new ProcessBuilder(java8.toString(), "-Xmx1G", "-jar", "server.jar", "nogui")
                 .directory(dir.toFile()).redirectErrorStream(true).start();
-        TestServer server = new TestServer(process, consoleLog);
-        if (server.await(line -> line.contains("Done ("), 0, Duration.ofMinutes(3)) < 0) {
-            server.close();
-            throw new IOException("The test server didn't start; see " + consoleLog);
-        }
-        return server;
+        Path console = runDir.resolve("harness").resolve("server-" + mc + ".out");
+        Files.createDirectories(console.getParent());
+        return new TestServer(process, console);
     }
 
-    /** The number of console lines so far, for {@link #await}'s {@code from}. */
-    int mark() {
-        return lines.size();
-    }
-
-    /** The index of the first line from {@code from} on that matches, waiting up to {@code timeout}; -1 if none. */
-    int await(Predicate<String> match, int from, Duration timeout) throws InterruptedException {
-        long deadline = System.nanoTime() + timeout.toNanos();
-        int next = from;
-        do {
-            for (; next < lines.size(); next++) {
-                if (match.test(lines.get(next))) {
-                    return next;
-                }
-            }
-            if (!process.isAlive()) {
-                return -1;
-            }
-            Thread.sleep(200);
-        } while (System.nanoTime() < deadline);
-        return -1;
-    }
-
-    /** The first line from {@code from} on that matches, without waiting; null if none. */
-    String find(Predicate<String> match, int from) {
-        for (int i = from; i < lines.size(); i++) {
-            if (match.test(lines.get(i))) {
-                return lines.get(i);
-            }
-        }
-        return null;
+    /** "ready", "starting" or "stopped", for a failed server step's report. */
+    String state() {
+        return !process.isAlive() ? "stopped (exit code " + process.exitValue() + ")" : ready ? "ready" : "still starting";
     }
 
     @Override
@@ -129,9 +101,5 @@ final class TestServer implements AutoCloseable {
         synchronized (console) {
             console.close();
         }
-    }
-
-    private static void log(String message) {
-        System.out.println("[harness] " + message);
     }
 }

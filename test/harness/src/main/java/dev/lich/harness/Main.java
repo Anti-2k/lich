@@ -1,35 +1,44 @@
 package dev.lich.harness;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.Duration;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
- * Lich's test harness, so far for Forge mod compatibility through whole modpacks (PLAN.md §7): one pinned pack run in
- * the Forge baseline on Java 8 and through Lich on Java 25, joined to the test server or in a singleplayer world, then
- * the two logs compared.
+ * Lich's test harness for Forge mod compatibility through whole modpacks (PLAN.md §7). Each pinned pack plays the same
+ * {@link Scenario} on Forge with Java 8 (the baseline, reused while nothing it depends on changes) and through Lich on
+ * Java 25, one game at a time; then the two runs are compared step by step into a {@link Verdict}, a report per pack
+ * and a summary.
  */
 public final class Main {
     private static final String USAGE = """
-            Usage: harness <command> <pack> [options]
-              fetch <pack>     download the pack into <run-dir>/packs/<pack>/minecraft
-              prism <pack>     create the Prism instances <pack>-forge-<mc> and <pack>-lich-<mc> from it
-              run <pack>       run it in each profile, joined to the local test server, and write a report
-              world <pack>     play a singleplayer world in each profile (create, tour, hold, save, reopen), and
-                               write a report
+            Usage: harness <command> <packs> [options]
+              fetch <packs>   download each pack into <run-dir>/packs/<pack>/minecraft
+              prism <pack>    create the Prism instances <pack>-forge-<mc> and <pack>-lich-<mc> from it
+              run <packs>     play the scenario on Forge (Java 8) and Lich (Java 25), compare, and write
+                              <run-dir>/harness/<pack>/report.md and <run-dir>/harness/summary.md
+            <packs>: pack ids, comma-separated, or all, @<tag> (@quick) or @<mc version> (@1.8.9). Packs with a
+            "skip" reason in packs.json only run when named.
             Options:
               --run-dir <dir>       Lich's run directory (cache, test servers, harness output)
               --java8-home <dir>    the JDK 8 the Forge baseline and the test server run on
               --instances <dir>     Prism's instances folder (prism)
-              --mc <version>        the version the dev profiles were installed for; must match the pack (run)
-              --profiles <list>     devlaunch profiles to run, comma-separated (default forge,lich-forge)
-              --hold <seconds>      how long each profile stays in the world (default 60)
-              --timeout <seconds>   how long a profile may take to join (run), or go without a step of the
-                                    world driver (world) (default 1200)
+              --baseline <mode>     auto: rerun Forge only when what it depends on changed (default);
+                                    rerun: always; skip: Lich alone, compared with nothing
+              --until <step>        stop after this step (boot, mods, server, world, spawn, tour, inventory,
+                                    gallery, hold, save, reload)
+              --hold <seconds>      how long the hold step stays in the world (default 20)
+              --gallery <on|off>    place every block (default: the pack's "gallery" setting)
+              --server <on|off>     join the local test server (default on, when run/server-<mc> exists)
             """;
+    private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
 
     private Main() {
     }
@@ -50,19 +59,28 @@ public final class Main {
         }
     }
 
+    /** The parsed command line. */
+    private record Options(Path runDir, Path java8Home, Path instances, String baseline, String until, int hold,
+                           Boolean gallery, boolean server) {
+        Path java8() {
+            return java8Home.resolve("bin").resolve(exe("java"));
+        }
+    }
+
     static int run(String[] args) throws IOException, InterruptedException {
         if (args.length < 2) {
             throw new IllegalArgumentException(USAGE);
         }
         String command = args[0];
-        Pack pack = Pack.get(args[1]);
+        List<Pack> packs = Pack.select(args[1]);
         Path runDir = Path.of("run");
         Path java8Home = Path.of("C:/Program Files/Java/jdk-8");
         Path instances = null;
-        String mc = null;
-        List<String> profiles = List.of("forge", "lich-forge");
-        Duration hold = Duration.ofSeconds(60);
-        Duration timeout = Duration.ofSeconds(1200);
+        String baseline = "auto";
+        String until = null;
+        int hold = 20;
+        Boolean gallery = null;
+        boolean server = true;
         for (int i = 2; i < args.length; i++) {
             String option = args[i];
             String value = i + 1 < args.length ? args[++i] : null;
@@ -73,31 +91,36 @@ public final class Main {
                 case "--run-dir" -> runDir = Path.of(value);
                 case "--java8-home" -> java8Home = Path.of(value);
                 case "--instances" -> instances = Path.of(value);
-                case "--mc" -> mc = value;
-                case "--profiles" -> profiles = List.of(value.split(","));
-                case "--hold" -> hold = Duration.ofSeconds(Long.parseLong(value));
-                case "--timeout" -> timeout = Duration.ofSeconds(Long.parseLong(value));
+                case "--baseline" -> baseline = oneOf(option, value, "auto", "rerun", "skip");
+                case "--until" -> until = value.isEmpty() ? null : value;
+                case "--hold" -> hold = Integer.parseInt(value);
+                case "--gallery" -> gallery = value.isEmpty() ? null : oneOf(option, value, "on", "off").equals("on");
+                case "--server" -> server = oneOf(option, value, "on", "off").equals("on");
                 default -> throw new IllegalArgumentException("Unknown option " + option + "\n\n" + USAGE);
             }
         }
-        runDir = runDir.toAbsolutePath().normalize();
-        Path java8 = java8Home.resolve("bin").resolve(exe("java"));
-        Path java25Home = Path.of(System.getProperty("java.home"));
-        if (!Files.isRegularFile(java8)) {
-            throw new IllegalArgumentException("No Java 8 at " + java8 + "; pass --java8-home (-Plich.java8Home)");
+        Options options = new Options(runDir.toAbsolutePath().normalize(), java8Home, instances, baseline, until, hold,
+                gallery, server);
+        if (!Files.isRegularFile(options.java8())) {
+            throw new IllegalArgumentException("No Java 8 at " + options.java8() + "; pass --java8-home (-Plich.java8Home)");
         }
 
-        Http http = new Http(runDir.resolve("cache").resolve("harness-downloads"));
-        Path template = new PackInstaller(http, runDir).install(pack);
+        Http http = new Http(options.runDir().resolve("cache").resolve("harness-downloads"));
+        PackInstaller installer = new PackInstaller(http, options.runDir());
         switch (command) {
             case "fetch" -> {
+                for (Pack pack : packs) {
+                    installer.install(pack);
+                }
                 return 0;
             }
             case "prism" -> {
-                if (instances == null) {
-                    throw new IllegalArgumentException("prism needs --instances");
+                if (instances == null || packs.size() != 1) {
+                    throw new IllegalArgumentException("prism needs one pack and --instances");
                 }
-                List<Path> created = PrismInstances.create(pack, template, instances, java8Home, java25Home);
+                Pack pack = packs.getFirst();
+                List<Path> created = PrismInstances.create(pack, installer.install(pack), instances, java8Home,
+                        Path.of(System.getProperty("java.home")));
                 System.out.println("[harness] Add Lich to the second one with:");
                 System.out.println("  ./gradlew :installer:installPrism \"-Plich.mc=" + pack.mc() + "\" \"-Plich.prismInstance="
                         + created.get(1).toString().replace('\\', '/') + "\"");
@@ -105,51 +128,137 @@ public final class Main {
                 return 0;
             }
             case "run" -> {
-                checkVersion(pack, mc);
-                return runProfiles(pack, template, runDir, java8, java25Home.resolve("bin").resolve(exe("java")), GameRun.Mode.SERVER,
-                        profiles, hold, timeout);
-            }
-            case "world" -> {
-                checkVersion(pack, mc);
-                return runProfiles(pack, template, runDir, java8, java25Home.resolve("bin").resolve(exe("java")), GameRun.Mode.WORLD,
-                        profiles, hold, timeout);
+                return runPacks(packs, installer, options);
             }
             default -> throw new IllegalArgumentException("Unknown command " + command + "\n\n" + USAGE);
         }
     }
 
-    private static void checkVersion(Pack pack, String mc) {
-        if (mc != null && !mc.equals(pack.mc())) {
-            throw new IllegalArgumentException(pack.name() + " is for Minecraft " + pack.mc()
-                    + "; pass -Plich.mc=" + pack.mc() + " so the matching dev profiles get installed");
-        }
-    }
-
-    private static int runProfiles(Pack pack, Path template, Path runDir, Path java8, Path java25, GameRun.Mode mode,
-                                   List<String> profiles, Duration hold, Duration timeout) throws IOException, InterruptedException {
-        Path out = runDir.resolve("harness").resolve(pack.id());
-        Files.createDirectories(out);
-        GameRun runner = new GameRun(runDir, java8, java25);
-        List<GameRun.Result> results = new ArrayList<>();
-        List<LogReport> logs = new ArrayList<>();
-        // A world run needs no test server.
-        try (TestServer server = mode == GameRun.Mode.SERVER ? TestServer.start(runDir, pack.mc(), java8, out.resolve("server.out")) : null) {
-            for (String profile : profiles) {
-                GameRun.Result result = mode == GameRun.Mode.SERVER
-                        ? runner.joinServer(pack, template, profile, server, hold, timeout)
-                        : runner.playWorld(pack, template, profile, hold, timeout);
-                System.out.println("[harness] " + profile + ": " + result.outcome().text
-                        + (result.detail().isEmpty() ? "" : " (" + result.detail() + ")"));
-                results.add(result);
-                logs.add(LogReport.read(result.gameDir().resolve("logs").resolve("latest.log"), result.gameDir()));
+    private static int runPacks(List<Pack> packs, PackInstaller installer, Options options)
+            throws IOException, InterruptedException {
+        long start = System.nanoTime();
+        Path harnessDir = options.runDir().resolve("harness");
+        String lich = lichVersion(options.runDir());
+        GameLauncher launcher = new GameLauncher(options.runDir(), options.java8(),
+                Path.of(System.getProperty("java.home"), "bin", exe("java")));
+        History history = new History(harnessDir.resolve("history.jsonl"));
+        List<Summary.Row> rows = new ArrayList<>();
+        Map<String, TestServer> servers = new LinkedHashMap<>();
+        try {
+            for (Pack pack : packs) {
+                System.out.println("[harness] === " + pack.name() + " (" + pack.id() + ", " + (rows.size() + 1) + "/"
+                        + packs.size() + ")");
+                Summary.Row row = runPack(pack, installer, launcher, options, lich, servers, history);
+                rows.add(row);
+                System.out.println("[harness] " + pack.id() + ": " + row.verdict().kind().text + ": " + row.verdict().reason()
+                        + " (report: " + row.report() + ")");
+                Summary.write(harnessDir.resolve("summary.md"), lich, rows, (System.nanoTime() - start) / 1_000_000_000L);
+            }
+        } finally {
+            for (TestServer server : servers.values()) {
+                server.close();
             }
         }
-        Path report = Report.write(out.resolve(mode.reportName), pack, mode, PackInstaller.countMods(template), results, logs);
-        System.out.println("[harness] Report: " + report);
-        return results.stream().allMatch(r -> r.outcome().passed) ? 0 : 1;
+        System.out.println("[harness] Summary: " + harnessDir.resolve("summary.md"));
+        return rows.stream().allMatch(r -> r.verdict().kind().ok) ? 0 : 1;
     }
 
-    private static String exe(String name) {
+    private static Summary.Row runPack(Pack pack, PackInstaller installer, GameLauncher launcher, Options options,
+                                       String lich, Map<String, TestServer> servers, History history)
+            throws IOException, InterruptedException {
+        Path template = installer.install(pack);
+        Scenario scenario = Scenario.of(pack, options.until(), options.hold(),
+                options.server() && TestServer.available(options.runDir(), pack.mc()), options.gallery());
+        if (scenario.server() && !servers.containsKey(pack.mc())) {
+            servers.put(pack.mc(), TestServer.start(options.runDir(), pack.mc(), options.java8()));
+        }
+        Path packDir = launcher.packDir(pack);
+        Files.createDirectories(packDir);
+        System.out.println("[harness] Steps: " + String.join(", ", scenario.steps()));
+
+        RunResult baseline = null;
+        boolean reused = false;
+        if (!options.baseline().equals("skip")) {
+            Path forgeProfile = options.runDir().resolve("cache").resolve("versions").resolve("forge-" + pack.mc())
+                    .resolve("forge-" + pack.mc() + ".json");
+            if (!Files.isRegularFile(forgeProfile)) {
+                throw new IOException("No " + forgeProfile + "; run :installer:installDevProfiles first");
+            }
+            String key = Baseline.key(pack, scenario, launcher.driverJar(), forgeProfile, options.java8());
+            baseline = options.baseline().equals("auto") ? Baseline.usable(packDir, key, scenario) : null;
+            reused = baseline != null;
+            if (reused) {
+                System.out.println("[harness] Forge baseline from " + baseline.startedAt() + ": " + Verdict.describe(baseline));
+            } else {
+                RunResult previous = RunResult.read(Baseline.file(packDir));
+                baseline = play(pack, template, Profile.FORGE, scenario, null, launcher, lich, key);
+                baseline.write(Baseline.file(packDir));
+                if (previous != null && previous.ending() != baseline.ending()) {
+                    System.out.println("[harness] The Forge baseline changed: it " + Verdict.describe(previous)
+                            + " before, now " + Verdict.describe(baseline));
+                }
+            }
+        }
+
+        RunResult run = play(pack, template, Profile.LICH, scenario, baseline, launcher, lich, null);
+        run.write(packDir.resolve(Profile.LICH.id + ".json"));
+        Verdict verdict = Verdict.of(run, baseline);
+        Path report = Report.write(packDir.resolve("report.md"), pack, PackInstaller.countMods(template), verdict, run,
+                baseline, reused);
+        History.Entry previous = history.last(pack.id());
+        history.add(new History.Entry(LocalDateTime.now().format(TIME), pack.id(), lich, verdict.kind().name(),
+                verdict.reason(), run.seconds(), reused));
+        return new Summary.Row(pack, verdict, run, reused, previous, report);
+    }
+
+    private static RunResult play(Pack pack, Path template, Profile profile, Scenario scenario, RunResult baseline,
+                                  GameLauncher launcher, String lich, String key) throws IOException, InterruptedException {
+        System.out.println("[harness] " + pack.id() + ": starting " + profile.title);
+        try (DriverLink link = new DriverLink()) {
+            Process game = launcher.start(pack, template, profile,
+                    scenario.properties(pack, link.port(), TestServer.port(pack.mc())));
+            RunResult result = new GameRun(pack, profile, scenario, baseline, launcher.gameDir(pack, profile),
+                    launcher.java(profile)).follow(game, link, lich, key);
+            System.out.println("[harness] " + pack.id() + " " + profile.id + ": " + Verdict.describe(result) + " in "
+                    + result.seconds() + " s");
+            return result;
+        }
+    }
+
+    /** The Lich commit the run tested, {@code +changes} when the working tree had uncommitted ones. */
+    private static String lichVersion(Path runDir) {
+        Path repo = runDir.getParent();
+        String commit = git(repo, "rev-parse", "--short", "HEAD");
+        if (commit == null) {
+            return "unknown";
+        }
+        String status = git(repo, "status", "--porcelain", "--untracked-files=no");
+        return commit + (status == null || status.isEmpty() ? "" : "+changes");
+    }
+
+    private static String git(Path repo, String... args) {
+        List<String> command = new ArrayList<>(List.of("git", "-C", repo.toString()));
+        command.addAll(List.of(args));
+        try {
+            Process git = new ProcessBuilder(command).redirectErrorStream(true).start();
+            String out = new String(git.getInputStream().readAllBytes(), StandardCharsets.UTF_8).strip();
+            return git.waitFor() == 0 ? out : null;
+        } catch (IOException e) {
+            return null;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return null;
+        }
+    }
+
+    private static String oneOf(String option, String value, String... allowed) {
+        if (!List.of(allowed).contains(value)) {
+            throw new IllegalArgumentException(option + " takes " + String.join(", ", allowed) + ", not " + value);
+        }
+        return value;
+    }
+
+    static String exe(String name) {
         return System.getProperty("os.name").startsWith("Windows") ? name + ".exe" : name;
     }
 }

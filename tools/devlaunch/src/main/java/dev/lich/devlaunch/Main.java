@@ -51,6 +51,36 @@ public final class Main {
     }
 
     static int launch(Options options) throws IOException, InterruptedException {
+        Prepared prepared = prepare(options);
+        if (options.dryRun()) {
+            log("Dry run, command:");
+            prepared.command().forEach(part -> System.out.println("  " + part));
+            return 0;
+        }
+        log("Starting " + options.java());
+        Process process = new ProcessBuilder(prepared.command()).directory(prepared.gameDir().toFile()).inheritIO().start();
+        int exit = process.waitFor();
+        log("Game exited with code " + exit);
+        return exit;
+    }
+
+    /**
+     * The game's command line for these devlaunch arguments, with everything it needs downloaded: for tools that
+     * start the game themselves (the test harness). It runs in the {@code --game-dir} directory, which must be given.
+     */
+    public static List<String> command(List<String> args) throws IOException {
+        Options options = Options.parse(args.toArray(String[]::new));
+        if (options.gameDir() == null) {
+            throw new IllegalArgumentException("command() needs --game-dir");
+        }
+        return prepare(options).command();
+    }
+
+    /** A game ready to start: its command line and the directory it runs in. */
+    private record Prepared(List<String> command, Path gameDir) {
+    }
+
+    private static Prepared prepare(Options options) throws IOException {
         Path cache = options.runDir().resolve("cache");
         Downloader downloader = new Downloader();
         VersionResolver resolver = new VersionResolver(downloader, cache.resolve("versions"));
@@ -82,17 +112,7 @@ public final class Main {
         command.add(options.mainClass() != null ? options.mainClass() : version.get("mainClass").getAsString());
         command.addAll(gameArguments(version, variables));
         command.addAll(options.gameArgs());
-
-        if (options.dryRun()) {
-            log("Dry run, command:");
-            command.forEach(part -> System.out.println("  " + part));
-            return 0;
-        }
-        log("Starting " + options.java());
-        Process process = new ProcessBuilder(command).directory(gameDir.toFile()).inheritIO().start();
-        int exit = process.waitFor();
-        log("Game exited with code " + exit);
-        return exit;
+        return new Prepared(List.copyOf(command), gameDir);
     }
 
     private static Path clientJar(JsonObject version, Path versionsDir, Downloader downloader) throws IOException {

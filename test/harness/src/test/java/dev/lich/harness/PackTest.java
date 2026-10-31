@@ -46,5 +46,19 @@ class PackTest {
                  "source": {"type": "ftb", "pack": "23", "version": "100"}}
                 """).getAsJsonObject());
         assertNotEquals(pack.fingerprint(), other.fingerprint(), "a new pin must rebuild the template");
+        assertEquals(List.of(), pack.tags());
+        assertNull(pack.skip());
+        assertTrue(!pack.gallery());
+    }
+
+    @Test
+    void selectionsNameSuitesButLeaveOutPacksThatCantRunUnattended() {
+        List<Pack> quick = Pack.select("@quick");
+        assertTrue(!quick.isEmpty() && quick.stream().allMatch(p -> p.tags().contains("quick")));
+        List<Pack> oneEight = Pack.select("@1.8.9");
+        assertTrue(oneEight.stream().allMatch(p -> p.mc().equals("1.8.9")));
+        assertTrue(Pack.select("all").stream().noneMatch(p -> p.skip() != null));
+        assertEquals("ultimate-warfare", Pack.select("ultimate-warfare").getFirst().id(), "named, it still runs");
+        assertEquals(List.of("cubesoft", "lost-era"), Pack.select("cubesoft, lost-era,cubesoft").stream().map(Pack::id).toList());
     }
 }
