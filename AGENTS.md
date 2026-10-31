@@ -134,12 +134,17 @@ Working so far:
   `PrismComponent` writes Prism components.
 - `devlaunch`.
 - `harness` (`test/harness`): Forge mod compatibility through whole modpacks, pinned in `packs.json` (Modrinth, Technic
-  Solder or zip, FTB or ATLauncher sources; PLAN.md §7). `./gradlew :harness:runPack "-Plich.pack=lost-era" "-Plich.mc=1.7.10"` runs the pack on Forge/Java 8
-  and Lich/Java 25 against the local test server, and writes `run/harness/<pack>/report.md`, which lists what only
-  one side logged. `-Plich.profiles=lich-forge` reruns Lich alone. `:harness:worldPack` (same options) plays a
-  singleplayer world instead (create, tour, hold, save, reopen) through a driver tweaker, and writes `world-report.md`;
-  a stalled run leaves a thread dump in `stall-threads.txt`. Run one game at a time (a big 1.7.10 pack takes ~6 GB
-  of the machine's 16), and no Hypixel SkyBlock packs (the user's call: repetitive, RAT risk). `:harness:prismPack`
+  Solder or zip, FTB or ATLauncher sources; PLAN.md §7). `./gradlew :harness:runPack "-Plich.pack=lost-era"` plays one
+  scenario through a driver tweaker (boot, mod list and config screens, the local test server, a singleplayer world:
+  spawn, tour, creative inventory, hold, save, reload, exit) on Forge/Java 8 and Lich/Java 25, and writes
+  `run/harness/<pack>/report.md` (a verdict: pass, review, FAIL, pack broken; the steps side by side; suspect lines
+  only Lich logged first) and `run/harness/summary.md`. The Forge run is a cached baseline (`baseline.json`), rerun
+  only when the pack, driver or scenario settings change, so a rerun after a Lich change runs Lich alone.
+  `-Plich.pack` takes ids, comma-separated, `all`, `@quick` or `@1.8.9`; `-Plich.until=boot` stops after a step;
+  `-Plich.baseline=rerun|skip`, `-Plich.hold=<s>`, `-Plich.gallery=on` (place every block), `-Plich.server=off`. No
+  `-Plich.mc`: both versions' dev profiles get installed. A stall leaves a thread dump in `stall-threads-<profile>.txt`.
+  Run one game at a time (a big 1.7.10 pack takes ~6 GB of the machine's 16; the harness does), and no Hypixel
+  SkyBlock packs (the user's call: repetitive, RAT risk). `:harness:prismPack`
   creates Prism instances `<pack>-forge-<mc>` and `<pack>-lich-<mc>` (none exist now; the user had them deleted).
   Refresh the `-lich-` ones with `installPrism` after a Lich build.
 

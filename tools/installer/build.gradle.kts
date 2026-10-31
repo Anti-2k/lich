@@ -18,15 +18,6 @@ application {
 // natives, without other dependencies, because the game's own libraries (log4j, jopt-simple, ...) come from
 // the version the profile inherits from.
 val lich = configurations.dependencyScope("lich")
-val lichRuntime = configurations.resolvable("lichRuntime") {
-    extendsFrom(lich.get())
-    isTransitive = false
-    attributes {
-        attribute(Usage.USAGE_ATTRIBUTE, objects.named(Usage.JAVA_RUNTIME))
-        attribute(Category.CATEGORY_ATTRIBUTE, objects.named(Category.LIBRARY))
-        attribute(LibraryElements.LIBRARY_ELEMENTS_ATTRIBUTE, objects.named(LibraryElements.JAR))
-    }
-}
 
 dependencies {
     add("lich", project(":boot"))
@@ -70,30 +61,47 @@ dependencies {
     }
 }
 
-// MCP's SRG mappings for the -Plich.mc version: the vanilla profile remaps the game to SRG names with them
-// (PLAN.md §3.1). Downloaded from Forge's Maven onto the user's machine, like the game itself; never shipped.
-val mcpMappings = configurations.dependencyScope("mcpMappings")
-val mcpMappingsFiles = configurations.resolvable("mcpMappingsFiles") {
-    extendsFrom(mcpMappings.get())
-    isTransitive = false
-}
-dependencies {
-    addProvider("mcpMappings", providers.gradleProperty("lich.mc").orElse("1.8.9").map { "de.oceanlabs.mcp:mcp:$it:srg@zip" })
-    // The API of that version only: both versions' API jars have the same class names.
-    addProvider("lich", providers.gradleProperty("lich.mc").orElse("1.8.9").map {
-        project.dependencies.project(mapOf("path" to ":v${it.replace('.', '_')}-api"))
-    })
+// Per Minecraft version: the jars above plus that version's API (both versions' API jars have the same class names, so
+// a profile gets one), and MCP's SRG mappings, which the vanilla profile remaps the game to SRG names with (PLAN.md
+// §3.1). The mappings come from Forge's Maven onto the user's machine, like the game itself; never shipped.
+class VersionJars(val runtime: Configuration, val mappings: Configuration)
+
+val versionJars = listOf("1.7.10", "1.8.9").associateWith { mc ->
+    val suffix = mc.replace('.', '_')
+    val api = configurations.dependencyScope("lichApi_$suffix")
+    val mcp = configurations.dependencyScope("mcpMappings_$suffix")
+    dependencies {
+        add(api.name, project(":v$suffix-api"))
+        add(mcp.name, "de.oceanlabs.mcp:mcp:$mc:srg@zip")
+    }
+    VersionJars(
+        configurations.resolvable("lichRuntime_$suffix") {
+            extendsFrom(lich.get(), api.get())
+            isTransitive = false
+            attributes {
+                attribute(Usage.USAGE_ATTRIBUTE, objects.named(Usage.JAVA_RUNTIME))
+                attribute(Category.CATEGORY_ATTRIBUTE, objects.named(Category.LIBRARY))
+                attribute(LibraryElements.LIBRARY_ELEMENTS_ATTRIBUTE, objects.named(LibraryElements.JAR))
+            }
+        }.get(),
+        configurations.resolvable("mcpMappingsFiles_$suffix") {
+            extendsFrom(mcp.get())
+            isTransitive = false
+        }.get())
 }
 
-/** Runs ProfileInstaller with the Lich jars, the JVM flags and [target] (--root or --prism-instance). */
-fun JavaExec.runInstaller(target: Provider<List<String>>) {
-    val mcVersion = providers.gradleProperty("lich.mc").orElse("1.8.9")
-    val mappings: FileCollection = mcpMappingsFiles.get()
+/** The -Plich.mc version (default 1.8.9). */
+val selectedMc = providers.gradleProperty("lich.mc").getOrElse("1.8.9")
+
+/** Runs ProfileInstaller for [mcVersion] with the Lich jars, the JVM flags and [target] (--root or --prism-instance). */
+fun JavaExec.runInstaller(mcVersion: String, target: Provider<List<String>>) {
+    val selected = versionJars[mcVersion] ?: throw GradleException("No Lich profile for Minecraft $mcVersion")
+    val mappings: FileCollection = selected.mappings
     val flags = rootProject.layout.projectDirectory.file("core/boot/src/main/resources/dev/lich/boot/jvm-flags.txt").asFile
-    val jars: FileCollection = lichRuntime.get()
+    val jars: FileCollection = selected.runtime
     val version = project.version.toString()
     // group:artifact:version[:classifier]=jar for each library; Lich's own modules are dev.lich:lich-<name>.
-    val libraries = lichRuntime.get().incoming.artifacts.resolvedArtifacts.map { artifacts ->
+    val libraries = selected.runtime.incoming.artifacts.resolvedArtifacts.map { artifacts ->
         artifacts.map { artifact ->
             val coordinates = when (val id = artifact.id.componentIdentifier) {
                 is ModuleComponentIdentifier -> {
@@ -114,9 +122,9 @@ fun JavaExec.runInstaller(target: Provider<List<String>>) {
     classpath = sourceSets.main.get().runtimeClasspath
     mainClass = application.mainClass
     argumentProviders.add(CommandLineArgumentProvider {
-        listOf("--mc", mcVersion.get(), "--flags", flags.absolutePath) + target.get() +
+        listOf("--mc", mcVersion, "--flags", flags.absolutePath) + target.get() +
             libraries.get().flatMap { listOf("--library", it) } +
-            listOf("--library", "de.oceanlabs.mcp:mcp:${mcVersion.get()}:srg@zip=${mappings.singleFile.absolutePath}")
+            listOf("--library", "de.oceanlabs.mcp:mcp:$mcVersion:srg@zip=${mappings.singleFile.absolutePath}")
     })
 }
 
@@ -124,7 +132,23 @@ fun JavaExec.runInstaller(target: Provider<List<String>>) {
 tasks.register<JavaExec>("installDevProfile") {
     description = "Writes the Lich version profile and its libraries into run/cache for devlaunch."
     val root = rootProject.layout.projectDirectory.dir("run/cache").asFile
-    runInstaller(provider { listOf("--root", root.absolutePath) })
+    runInstaller(selectedMc, provider { listOf("--root", root.absolutePath) })
+}
+
+// ./gradlew :installer:installDevProfiles: the same for every version (the test harness runs packs of both).
+val perVersion = versionJars.keys.map { mc ->
+    tasks.register<JavaExec>("installDevProfile_${mc.replace('.', '_')}") {
+        description = "Writes the Lich $mc version profile and its libraries into run/cache for devlaunch."
+        val root = rootProject.layout.projectDirectory.dir("run/cache").asFile
+        runInstaller(mc, provider { listOf("--root", root.absolutePath) })
+    }
+}
+// They copy the same shared libraries into run/cache, so one at a time.
+perVersion.zipWithNext { first, second -> second.configure { mustRunAfter(first) } }
+tasks.register("installDevProfiles") {
+    group = "lich"
+    description = "Writes the Lich version profiles of every Minecraft version into run/cache for devlaunch."
+    dependsOn(perVersion)
 }
 
 // ./gradlew :installer:installPrism [-Plich.mc=1.8.9] [-Plich.prismInstance=<dir>]
@@ -136,5 +160,5 @@ tasks.register<JavaExec>("installPrism") {
         providers.gradleProperty("lich.mc").orElse("1.8.9").map { mc ->
             "${System.getenv("APPDATA")}/PrismLauncher/instances/lich-forge-$mc"
         })
-    runInstaller(instance.map { listOf("--prism-instance", it) })
+    runInstaller(selectedMc, instance.map { listOf("--prism-instance", it) })
 }

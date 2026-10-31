@@ -1,6 +1,6 @@
 // Phase 4: automated launch tests (PLAN.md §7). So far the modpack harness: a pinned modpack is fetched into
-// run/packs, then each profile (Forge on Java 8, Lich on Java 25) starts it through devlaunch, and either joins the
-// local test server and stays, or plays a singleplayer world (the driver below); then the logs are compared. Later:
+// run/packs, then each profile (Forge on Java 8, Lich on Java 25) plays the same scenario through the driver below
+// (boot, mod list, the test server, a singleplayer world, save and reload), and the two runs are compared. Later:
 // determinism replay, anticheat smoke test (§6.4).
 plugins {
     id("lich.java")
@@ -55,10 +55,10 @@ tasks.processResources {
 // ./gradlew :harness:prismPack "-Plich.pack=lost-era"
 //   Creates the Prism instances <pack>-forge-<mc> (Java 8) and <pack>-lich-<mc> (Java 25) from it. Then add Lich to
 //   the second one: ./gradlew :installer:installPrism "-Plich.mc=<mc>" "-Plich.prismInstance=<its dir>".
-// ./gradlew :harness:runPack "-Plich.pack=lost-era" "-Plich.mc=1.7.10" ["-Plich.profiles=forge,lich-forge"] ["-Plich.hold=60"]
-//   Starts the local test server, runs each profile into it and writes run/harness/<pack>/report.md.
-// ./gradlew :harness:worldPack "-Plich.pack=lost-era" "-Plich.mc=1.7.10" ["-Plich.profiles=..."] ["-Plich.hold=60"]
-//   Plays a singleplayer world in each profile (create, tour, hold, save, reload) and writes world-report.md.
+// ./gradlew :harness:runPack "-Plich.pack=<packs>" ["-Plich.baseline=auto|rerun|skip"] ["-Plich.until=<step>"]
+//         ["-Plich.hold=20"] ["-Plich.gallery=on|off"] ["-Plich.server=on|off"]
+//   Plays the scenario on Forge (Java 8; reused while nothing it depends on changed) and Lich (Java 25), and writes
+//   run/harness/<pack>/report.md and run/harness/summary.md. <packs>: ids, comma-separated, all, @quick or @<mc>.
 // -Plich.java8Home=<jdk dir> picks the Java 8 the Forge baseline runs on. Everything the tasks' lambdas use is a
 // local of the configure block (configuration cache).
 fun JavaExec.harness(command: String, vararg extra: Provider<List<String>>) {
@@ -72,7 +72,7 @@ fun JavaExec.harness(command: String, vararg extra: Provider<List<String>>) {
     mainClass = application.mainClass
     workingDir = runDir
     argumentProviders.add(CommandLineArgumentProvider {
-        val id = pack.orNull ?: throw GradleException("Pass -Plich.pack=<pack> (see test/harness/src/main/resources/dev/lich/harness/packs.json)")
+        val id = pack.orNull ?: throw GradleException("Pass -Plich.pack=<packs> (see test/harness/src/main/resources/dev/lich/harness/packs.json)")
         listOf(command, id, "--run-dir", runDir.absolutePath, "--java8-home", java8Home.get()) + extras.flatMap { it.get() }
     })
     doFirst { runDir.mkdirs() }
@@ -91,24 +91,12 @@ tasks.register<JavaExec>("prismPack") {
 }
 
 tasks.register<JavaExec>("runPack") {
-    description = "Runs a modpack in Forge on Java 8 and Lich on Java 25, joins the test server and compares the logs."
-    // The lich-forge-<mc> and forge-<mc> version JSONs devlaunch starts.
-    dependsOn(":installer:installDevProfile")
-    harness("run", gameOptions())
+    description = "Plays modpacks on Forge (Java 8) and Lich (Java 25) and compares the runs step by step."
+    // The lich-forge-<mc> and forge-<mc> version JSONs devlaunch starts, for both versions (a suite may mix them).
+    dependsOn(":installer:installDevProfiles")
+    harness("run", option("baseline"), option("until"), option("hold"), option("gallery"), option("server"))
 }
 
-tasks.register<JavaExec>("worldPack") {
-    description = "Plays a singleplayer world of a modpack in Forge on Java 8 and Lich on Java 25 and compares the logs."
-    dependsOn(":installer:installDevProfile")
-    harness("world", gameOptions())
-}
-
-// Options shared by runPack and worldPack. The lambdas capture only their parameters (configuration cache).
-fun gameOptions(): Provider<List<String>> {
-    val mc = providers.gradleProperty("lich.mc").orElse("1.8.9")
-    val profiles = providers.gradleProperty("lich.profiles").orElse("forge,lich-forge")
-    val hold = providers.gradleProperty("lich.hold").orElse("60")
-    return mc.zip(profiles.zip(hold) { p, h -> p to h }) { m, (p, h) ->
-        listOf("--mc", m, "--profiles", p, "--hold", h)
-    }
-}
+/** --<name> <value> for -Plich.<name>, or nothing. The lambda captures only its parameter (configuration cache). */
+fun option(name: String): Provider<List<String>> =
+    providers.gradleProperty("lich.$name").map { listOf("--$name", it) }.orElse(listOf())
