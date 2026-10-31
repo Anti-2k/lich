@@ -123,9 +123,9 @@ The full design, every Java 25 breakage and its fix, the Lich mod format and the
 
 ## Project status
 
-First release: **0.3.0**. Running Forge and its mods on Java 25 works and is tested with modpacks; Lich mods
-v0 work (one real client runs on them), and there's a Prism installer. Still to come: Linux and macOS testing,
-a first-party performance mod, other launchers and mod developer docs. See the [roadmap](DOCS.md#8-roadmap).
+Current release: **0.3.1** (first release: 0.3.0). Running Forge and its mods on Java 25 works and is tested
+with modpacks; Lich mods v0 work, one jar can target both 1.7.10 and 1.8.9, and there's a Prism installer. Still to come: Linux and macOS testing,
+other launchers and mod developer docs. See the [roadmap](DOCS.md#8-roadmap).
 
 ## License
 

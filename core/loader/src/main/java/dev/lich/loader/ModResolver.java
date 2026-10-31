@@ -26,6 +26,14 @@ final class ModResolver {
         List<String> problems = new ArrayList<>();
         Map<String, LichMod> byId = new TreeMap<>();
         for (LichMod mod : mods) {
+            ModDescriptor descriptor = mod.descriptor();
+            String name = descriptor.name() + " (" + mod.source().getFileName() + ")";
+            if (!descriptor.supportsMinecraft(environment.minecraft())) {
+                problems.add(name + " is for Minecraft " + descriptor.minecraftText() + ", not " + environment.minecraft());
+            } else {
+                // From here on the mod is what it is on this version: its version-only parts merged in.
+                mod = new LichMod(descriptor.forMinecraft(environment.minecraft()), mod.source());
+            }
             LichMod other = byId.putIfAbsent(mod.id(), mod);
             if (other != null) {
                 problems.add("Mod " + mod.id() + " is installed twice: " + other.source().getFileName() + " and " + mod.source().getFileName());
@@ -36,9 +44,6 @@ final class ModResolver {
         for (LichMod mod : byId.values()) {
             ModDescriptor descriptor = mod.descriptor();
             String name = descriptor.name() + " (" + mod.source().getFileName() + ")";
-            if (!descriptor.minecraft().equals(environment.minecraft())) {
-                problems.add(name + " is for Minecraft " + descriptor.minecraft() + ", not " + environment.minecraft());
-            }
             if (descriptor.forge().equals("required") && !environment.forge()) {
                 problems.add(name + " needs Forge");
             }

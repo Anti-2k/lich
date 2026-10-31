@@ -1,0 +1,29 @@
+{
+  "schema": 1,
+  "id": "lichmulti",
+  "version": "0.1.0",
+  "name": "Lich multi-version test mod",
+  "description": "One jar for 1.7.10 and 1.8.9: shared code, and a Mixin, access widener and entrypoint per version.",
+  "authors": ["Lich"],
+  "minecraft": ["1.7.10", "1.8.9"],
+  "depends": {
+    "lich": ">=0.1",
+    "forge": "optional"
+  },
+  "entrypoints": {
+    "client": ["dev.lich.multimod.MultiMod"]
+  },
+  "javaVersion": 25,
+  "versions": {
+    "1.7.10": {
+      "entrypoints": {"client": ["dev.lich.multimod.v1_7_10.Client"]},
+      "mixins": ["mixins.lichmulti.1_7_10.json"],
+      "accessWidener": "lichmulti.1_7_10.aw"
+    },
+    "1.8.9": {
+      "entrypoints": {"client": ["dev.lich.multimod.v1_8_9.Client"]},
+      "mixins": ["mixins.lichmulti.1_8_9.json"],
+      "accessWidener": "lichmulti.1_8_9.aw"
+    }
+  }
+}
