@@ -7,7 +7,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * What every profile of a pack plays (PLAN.md §7), as steps the driver takes in order:
+ * What every profile of a pack plays (DOCS.md §7), as steps the driver takes in order:
  * <ol>
  *     <li>{@code boot}: the game starts and its first screen settles;</li>
  *     <li>{@code mods}: FML's mod list, every mod selected and every config screen opened;</li>

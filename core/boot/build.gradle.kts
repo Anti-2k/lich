@@ -1,5 +1,5 @@
 // dev.lich.boot.Main: checks the JVM flags, makes logging safe, installs the compat pass and the
-// system class loader, picks the profile and starts Lich's LaunchWrapper. PLAN.md §3, §4.1.
+// system class loader, picks the profile and starts Lich's LaunchWrapper. DOCS.md §3, §4.1.
 plugins {
     id("lich.java")
 }

@@ -1,4 +1,4 @@
-// ASM 5 compatibility on the ASM 9 that Lich ships instead of Forge's asm-all 5.0.3. PLAN.md §2.4.
+// ASM 5 compatibility on the ASM 9 that Lich ships instead of Forge's asm-all 5.0.3. DOCS.md §2.4.
 // - org/objectweb/asm/**: classes ASM 9 removed but FML still uses (RemappingClassAdapter and friends,
 //   in FML's DeobfuscationTransformer), copied from ASM 5.0.3 (BSD-3-Clause, see META-INF/LICENSE-ASM.txt).
 //   Keeping ASM 5's exact behavior, e.g. LocalVariablesSorter's local renumbering, keeps FML's output

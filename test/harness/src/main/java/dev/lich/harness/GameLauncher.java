@@ -77,7 +77,7 @@ final class GameLauncher {
                 "--extra-cp", driverJar().toString(),
                 "--game-arg", "--tweakClass", "--game-arg", DRIVER,
                 "--jvm-arg", "-Xmx" + pack.memoryMb() + "M",
-                // Lists every mixin applied, so the report can compare them (PLAN.md §7).
+                // Lists every mixin applied, so the report can compare them (DOCS.md §7).
                 "--jvm-arg", "-Dmixin.debug.verbose=true"));
         driverProperties.forEach((key, value) -> args.addAll(List.of("--jvm-arg", "-D" + key + "=" + value)));
         if (profile == Profile.LICH) {

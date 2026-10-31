@@ -7,7 +7,7 @@ import java.util.regex.Pattern;
 
 /**
  * Picks, out of what only the Lich run logged, the lines that look like a Java 25 or Lich problem rather than run-to-run
- * noise: the linkage and access errors a removed or encapsulated JDK API gives (PLAN.md §2), the JDK internals mods
+ * noise: the linkage and access errors a removed or encapsulated JDK API gives (DOCS.md §2), the JDK internals mods
  * reach for, and LWJGL. The report lists these first; a run that has any gets the verdict "review".
  */
 final class Triage {

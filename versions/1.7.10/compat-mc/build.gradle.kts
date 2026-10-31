@@ -1,6 +1,6 @@
 // Fixes to Minecraft 1.7.10 itself. Until Lich has Mixin (Phase 4) these are ClassPatches written
 // against SRG names, applied after FML has patched and deobfuscated the class, so for now they only
-// run in the Forge profile. PLAN.md §3.2.
+// run in the Forge profile. DOCS.md §3.2.
 plugins {
     id("lich.java")
 }

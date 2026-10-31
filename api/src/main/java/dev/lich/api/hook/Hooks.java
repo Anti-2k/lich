@@ -7,7 +7,7 @@ import java.security.CodeSource;
 import java.util.Optional;
 
 /**
- * The hooks Lich can weave into the game for Lich mods (PLAN.md §5.2). A mod lists the ones it uses under
+ * The hooks Lich can weave into the game for Lich mods (DOCS.md §5.2). A mod lists the ones it uses under
  * {@code "hooks"} in its {@code lich.mod.json}; Lich weaves exactly the hooks loaded mods list, so the game
  * runs untouched where nobody listens. Each hook fires the events documented on its constant.
  */

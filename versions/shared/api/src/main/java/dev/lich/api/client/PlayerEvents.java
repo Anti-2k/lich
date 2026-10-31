@@ -5,7 +5,7 @@ import dev.lich.api.hook.Hooks;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.player.EntityPlayer;
 
-/** The player's actions, observed only: listeners can't change or stop them (PLAN.md §6). */
+/** The player's actions, observed only: listeners can't change or stop them (DOCS.md §6). */
 public final class PlayerEvents {
     /**
      * The player attacks {@code target} (hook {@code player.attack}): the attack has been sent to the server,

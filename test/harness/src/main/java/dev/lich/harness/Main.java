@@ -12,7 +12,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Lich's test harness for Forge mod compatibility through whole modpacks (PLAN.md §7). Each pinned pack plays the same
+ * Lich's test harness for Forge mod compatibility through whole modpacks (DOCS.md §7). Each pinned pack plays the same
  * {@link Scenario} on Forge with Java 8 (the baseline, reused while nothing it depends on changes) and through Lich on
  * Java 25, one game at a time; then the two runs are compared step by step into a {@link Verdict}, a report per pack
  * and a summary.

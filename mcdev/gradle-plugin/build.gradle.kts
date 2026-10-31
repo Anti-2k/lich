@@ -1,5 +1,5 @@
 // The dev.lich.mod Gradle plugin: what a Lich mod (and Lich's own per-version API modules) needs to build
-// against Minecraft without Forge. PLAN.md §5, §9.
+// against Minecraft without Forge. DOCS.md §5, §9.
 plugins {
     id("lich.java")
     `java-gradle-plugin`

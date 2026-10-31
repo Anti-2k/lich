@@ -1,5 +1,5 @@
 // Lich's API for Minecraft 1.8.9: the events that carry game types, KeyBindings, and the hooks (Mixins on the
-// game, woven only for hooks a loaded mod asks for) that fire them, with and without Forge (PLAN.md §5.2).
+// game, woven only for hooks a loaded mod asks for) that fire them, with and without Forge (DOCS.md §5.2).
 // Built against vanilla 1.8.9 with MCP names and reobfuscated to SRG by the dev.lich.mod plugin.
 plugins {
     id("lich.java")
