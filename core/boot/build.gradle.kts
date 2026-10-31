@@ -18,6 +18,7 @@ dependencies {
     implementation(project(":v1_8_9-compat-mc"))
     // Provided by the game's own classpath at runtime.
     compileOnly(libs.log4j.api.legacy)
+    compileOnly(libs.log4j.core.legacy)
 
     testImplementation(libs.log4j.api.legacy)
     testImplementation(libs.log4j.core.legacy)
