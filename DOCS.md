@@ -322,7 +322,8 @@ Never redistribute Minecraft or patched Forge binaries. Patch at load time, or o
     keeps OS mouse acceleration (no raw input) unless a Lich mod turns raw input on (`RawMouseInput`, off by
     default); `Display.create` creates Mouse and Keyboard; window
     messages are processed only on the main thread (Forge's splash thread swaps but doesn't poll);
-    `Display.sync` sleeps then yields like LWJGL 2's, then processes window messages again, so the next frame
+    `Display.sync` sleeps then yields like LWJGL 2's (on Windows the sleep is one wait on a high-resolution
+    waitable timer, `-Dlich.preciseSync=false` for LWJGL 2's 1 ms sleeps), then processes window messages again, so the next frame
     reads input from after the sleep, not from before it (`-Dlich.lateInputPoll=false` turns that off; input
     the game reads is otherwise the same: movement accumulates, events queue in order); `Sys.getTime()` is milliseconds from `nanoTime`
     (the tick timer compares it with `nanoTime`, so its sync adjustment stays at 1: not server-visible).
