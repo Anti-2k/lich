@@ -1,4 +1,4 @@
-// Shims for removed JDK APIs and their redirect table (PLAN.md §2.3, §4.3, §4.4).
+// Shims for removed JDK APIs and their redirect table (DOCS.md §2.3, §4.3, §4.4).
 plugins {
     id("lich.java")
 }

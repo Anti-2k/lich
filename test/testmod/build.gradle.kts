@@ -1,6 +1,6 @@
 // A small Lich mod for 1.8.9 that touches every part of the loader: entrypoints, hooks, its own Mixin config
 // and an access widener. Each part logs one "Lich testmod:" line, so a launch log shows what works
-// (PLAN.md §7). Install it with :testmod:installDev (into run/lich-1.8.9/mods and run/lich-forge-1.8.9/mods).
+// (DOCS.md §7). Install it with :testmod:installDev (into run/lich-1.8.9/mods and run/lich-forge-1.8.9/mods).
 // The Forge-mod half of the plan's test mod comes later, with the harness.
 plugins {
     id("lich.java")

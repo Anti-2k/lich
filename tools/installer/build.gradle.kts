@@ -1,6 +1,6 @@
 // Writes Lich version profiles (version JSON + libraries) into a launcher-style directory, or adds Lich
-// to a Prism instance. Phase 1 uses it for devlaunch and Prism testing; the user-facing installer
-// builds on it later. PLAN.md §4.5, §4.6.
+// to a Prism instance: for devlaunch and Prism testing (Phase 1), and the player-facing Prism installer jar
+// (installerJar, Phase 9). DOCS.md §4.5, §4.6.
 plugins {
     id("lich.java")
     application
@@ -30,7 +30,7 @@ dependencies {
     add("lich", project(":api"))
     add("lich", project(":v1_7_10-compat-forge"))
     add("lich", project(":v1_8_9-compat-forge"))
-    // Lich mods' Mixin. The system class loader holds both back unless Lich mods are installed (PLAN.md §2.4).
+    // Lich mods' Mixin. The system class loader holds both back unless Lich mods are installed (DOCS.md §2.4).
     add("lich", libs.mixin)
     add("lich", libs.mixinextras)
     add("lich", project(":compat-jdk"))
@@ -45,12 +45,12 @@ dependencies {
     add("lich", libs.asm.util)
     // For scripting mods (jdk.nashorn → org.openjdk.nashorn); it runs on the ASM 9 above.
     add("lich", libs.nashorn.core)
-    // JAXB (javax.xml.bind), which Java 8 had and some mods use (PLAN.md §2.3). Not transitive here, so all of it.
+    // JAXB (javax.xml.bind), which Java 8 had and some mods use (DOCS.md §2.3). Not transitive here, so all of it.
     for (module in listOf(libs.jaxb.api, libs.jaxb.runtime, libs.jaxb.txw2, libs.istack.commons.runtime, libs.activation)) {
         add("lich", module)
     }
     // LWJGL 3 replaces the game's LWJGL 2 (compat-lwjgl2 has LWJGL 2's API on it). Every platform's natives go
-    // on the class path, where LWJGL 3 finds its own; the system class loader drops LWJGL 2 (PLAN.md §2.5).
+    // on the class path, where LWJGL 3 finds its own; the system class loader drops LWJGL 2 (DOCS.md §2.5).
     add("lich", project(":compat-lwjgl2"))
     for (module in listOf(libs.lwjgl3.asProvider(), libs.lwjgl3.glfw, libs.lwjgl3.opengl, libs.lwjgl3.openal,
             libs.lwjgl3.stb, libs.lwjgl3.tinyfd, libs.lwjgl3.tinyexr, libs.lwjgl3.nanovg)) {
@@ -62,7 +62,7 @@ dependencies {
 }
 
 // Per Minecraft version: the jars above plus that version's API (both versions' API jars have the same class names, so
-// a profile gets one), and MCP's SRG mappings, which the vanilla profile remaps the game to SRG names with (PLAN.md
+// a profile gets one), and MCP's SRG mappings, which the vanilla profile remaps the game to SRG names with (DOCS.md
 // §3.1). The mappings come from Forge's Maven onto the user's machine, like the game itself; never shipped.
 class VersionJars(val runtime: Configuration, val mappings: Configuration)
 
@@ -161,4 +161,49 @@ tasks.register<JavaExec>("installPrism") {
             "${System.getenv("APPDATA")}/PrismLauncher/instances/lich-forge-$mc"
         })
     runInstaller(selectedMc, instance.map { listOf("--prism-instance", it) })
+}
+
+// The player-facing installer: one jar with the installer, Gson, Lich's own jars and, per Minecraft version, the list
+// of libraries Prism downloads (Payload). Its main class is a Java 8 stub, so a too-old Java gets a message, not
+// silence (src/start).
+val start = sourceSets.create("start")
+tasks.named<JavaCompile>(start.compileJavaTaskName) {
+    options.release = 8
+    // "source value 8 is obsolete": it's deliberate.
+    options.compilerArgs.add("-Xlint:-options")
+}
+
+val payloads = versionJars.keys.map { mc ->
+    tasks.register<JavaExec>("installerPayload_${mc.replace('.', '_')}") {
+        description = "Writes what the installer jar installs for Minecraft $mc."
+        val dir = layout.buildDirectory.dir("payload/$mc").get().asFile
+        outputs.dir(dir).withPropertyName("payload")
+        doFirst { dir.deleteRecursively() }
+        runInstaller(mc, provider { listOf("--payload", dir.absolutePath) })
+    }
+}
+
+// ./gradlew :installer:installerJar → tools/installer/build/installer/lich-installer-<version>.jar (its own folder:
+// the module's plain jar in build/libs has the same name)
+val installerJar = tasks.register<Jar>("installerJar") {
+    group = "lich"
+    description = "Builds the player-facing Prism installer jar."
+    archiveFileName = "lich-installer-${project.version}.jar"
+    destinationDirectory = layout.buildDirectory.dir("installer")
+    manifest.attributes("Main-Class" to "dev.lich.installer.start.Start")
+    from(sourceSets.main.get().output)
+    from(start.output)
+    val runtime = configurations.runtimeClasspath
+    from(runtime.map { jars -> jars.map { zipTree(it) } }) {
+        exclude("META-INF/MANIFEST.MF", "module-info.class", "META-INF/versions/*/module-info.class")
+    }
+    for (payload in payloads) {
+        from(payload) { into("lich") }
+    }
+    // Both versions' payloads carry the same Lich jars.
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
+
+tasks.assemble {
+    dependsOn(installerJar)
 }

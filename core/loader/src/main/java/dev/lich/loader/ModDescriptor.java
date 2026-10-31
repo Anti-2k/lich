@@ -13,7 +13,7 @@ import java.util.Map;
 import java.util.regex.Pattern;
 
 /**
- * A mod's {@code lich.mod.json} (PLAN.md §5.1), checked for shape: every field has the right type, the id
+ * A mod's {@code lich.mod.json} (DOCS.md §5.1), checked for shape: every field has the right type, the id
  * and version are well-formed, and unknown kinds of entrypoints or Forge requirements are rejected rather
  * than ignored. Whether the mod fits this game (Minecraft version, dependencies) is {@link ModResolver}'s job.
  *

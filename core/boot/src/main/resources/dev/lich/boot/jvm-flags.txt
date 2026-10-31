@@ -1,5 +1,5 @@
 # JVM arguments Lich needs: the generated version JSON passes them, and dev.lich.boot.Main refuses to
-# start without them. One argument per line, in --option=value form. See PLAN.md §4.1.
+# start without them. One argument per line, in --option=value form. See DOCS.md §4.1.
 #
 # Old Netty, LWJGL 2, Guava and mods reflect into these JDK packages.
 --add-opens=java.base/java.lang=ALL-UNNAMED

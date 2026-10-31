@@ -10,11 +10,8 @@ import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.time.OffsetDateTime;
 import java.time.temporal.ChronoUnit;
-import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -36,6 +33,7 @@ public final class ProfileInstaller {
         String mc = null;
         Path root = null;
         Path prismInstance = null;
+        Path payload = null;
         Path flagsFile = null;
         Map<String, Path> libraries = new LinkedHashMap<>();
         for (int i = 0; i < args.length; i++) {
@@ -43,6 +41,7 @@ public final class ProfileInstaller {
                 case "--mc" -> mc = args[++i];
                 case "--root" -> root = Path.of(args[++i]);
                 case "--prism-instance" -> prismInstance = Path.of(args[++i]);
+                case "--payload" -> payload = Path.of(args[++i]);
                 case "--flags" -> flagsFile = Path.of(args[++i]);
                 case "--library" -> {
                     // group:artifact:version=path/to.jar
@@ -52,14 +51,23 @@ public final class ProfileInstaller {
                 default -> throw new IllegalArgumentException("Unknown option " + args[i]);
             }
         }
-        if (mc == null || (root == null) == (prismInstance == null) || flagsFile == null) {
-            throw new IllegalArgumentException("Usage: --mc <version> (--root <launcher dir> | --prism-instance <instance dir>)"
-                    + " --flags <jvm-flags.txt> [--library <coords>=<jar>]...");
+        long targets = java.util.stream.Stream.of(root, prismInstance, payload).filter(java.util.Objects::nonNull).count();
+        if (mc == null || targets != 1 || flagsFile == null) {
+            throw new IllegalArgumentException("Usage: --mc <version> (--root <launcher dir> | --prism-instance <instance dir>"
+                    + " | --payload <dir>) --flags <jvm-flags.txt> [--library <coords>=<jar>]...");
         }
+        String version = libraries.keySet().stream().filter(c -> c.startsWith("dev.lich:")).findFirst().map(c -> c.split(":")[2]).orElse("dev");
         if (prismInstance != null) {
-            String version = libraries.keySet().stream().filter(c -> c.startsWith("dev.lich:")).findFirst().map(c -> c.split(":")[2]).orElse("dev");
-            PrismComponent.install(prismInstance, mc, version, readFlags(flagsFile), libraries);
+            List<Library> local = libraries.entrySet().stream()
+                    .<Library>map(library -> new Library.Local(library.getKey(), library.getValue())).toList();
+            PrismComponent.install(prismInstance, mc, version, readFlags(flagsFile), local);
             System.out.println("[installer] Installed Lich " + version + " into Prism instance " + prismInstance);
+            return;
+        }
+        if (payload != null) {
+            // What the player-facing installer jar carries (PrismInstaller).
+            Payload.write(payload, mc, version, readFlags(flagsFile), libraries);
+            System.out.println("[installer] Wrote the installer payload for " + mc + " into " + payload);
             return;
         }
         Path json = install(mc, root, readFlags(flagsFile), libraries);
@@ -81,7 +89,7 @@ public final class ProfileInstaller {
 
             JsonObject artifact = new JsonObject();
             artifact.addProperty("path", path);
-            artifact.addProperty("sha1", sha1(target));
+            artifact.addProperty("sha1", Payload.sha1(target));
             artifact.addProperty("size", Files.size(target));
             // Empty: installed locally, nothing for a launcher to download.
             artifact.addProperty("url", "");
@@ -156,18 +164,5 @@ public final class ProfileInstaller {
         String[] parts = withExtension[0].split(":");
         String extension = withExtension.length == 2 ? withExtension[1] : "jar";
         return parts[1] + "-" + parts[2] + (parts.length == 4 ? "-" + parts[3] : "") + "." + extension;
-    }
-
-    private static String sha1(Path file) throws IOException {
-        try (InputStream in = Files.newInputStream(file)) {
-            MessageDigest digest = MessageDigest.getInstance("SHA-1");
-            byte[] buffer = new byte[64 * 1024];
-            for (int n; (n = in.read(buffer)) > 0; ) {
-                digest.update(buffer, 0, n);
-            }
-            return HexFormat.of().formatHex(digest.digest());
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException(e);
-        }
     }
 }

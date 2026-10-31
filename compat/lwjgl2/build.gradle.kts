@@ -1,4 +1,4 @@
-// LWJGL 2's API on top of LWJGL 3 (PLAN.md §2.5). Two parts:
+// LWJGL 2's API on top of LWJGL 3 (DOCS.md §2.5). Two parts:
 // - org/lwjgl/**: the LWJGL 2 classes LWJGL 3 doesn't have (Display, Keyboard, Mouse, Sys, ...), under
 //   their own names, so mods' Mixins and coremods that target them keep matching. Built on GLFW.
 // - dev/lich/compat/lwjgl2/**: the redirect table for members LWJGL 3 dropped from classes both have

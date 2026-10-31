@@ -10,7 +10,7 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 /**
- * Hook {@code player.attack}, observe only (PLAN.md §6): after the attack packet is queued, before the client
+ * Hook {@code player.attack}, observe only (DOCS.md §6): after the attack packet is queued, before the client
  * applies the attack itself, where Forge fires its attack event. Nothing about the attack can change here.
  */
 @Mixin(PlayerControllerMP.class)

@@ -1,5 +1,5 @@
 // The Mixin that Lich mods run on (Fabric's fork of Mixin 0.8.7, plus MixinExtras), started only when Lich
-// mods are installed: without them the game keeps whatever Mixin Forge mods ship (PLAN.md §2.4, §5.2).
+// mods are installed: without them the game keeps whatever Mixin Forge mods ship (DOCS.md §2.4, §5.2).
 plugins {
     id("lich.java")
 }

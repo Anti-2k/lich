@@ -1,4 +1,4 @@
-// Phase 4: automated launch tests (PLAN.md §7). So far the modpack harness: a pinned modpack is fetched into
+// Phase 4: automated launch tests (DOCS.md §7). So far the modpack harness: a pinned modpack is fetched into
 // run/packs, then each profile (Forge on Java 8, Lich on Java 25) plays the same scenario through the driver below
 // (boot, mod list, the test server, a singleplayer world, save and reload), and the two runs are compared.
 plugins {

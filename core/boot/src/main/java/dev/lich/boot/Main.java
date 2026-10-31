@@ -82,7 +82,7 @@ public final class Main {
         String minecraft = Profile.minecraftVersion(tweakClasses, LichSystemClassLoader.mappings());
         boolean srgNames = profile == Profile.FORGE || useSrgRemapper(log);
         List<LichMod> mods = loadLichMods(log, args, profile, minecraft, srgNames, version, relauncher);
-        installCompat(log, tweakClasses, minecraft, srgNames, !mods.isEmpty());
+        installCompat(log, tweakClasses, minecraft, profile == Profile.FORGE, srgNames, !mods.isEmpty());
 
         String[] launchArgs = switch (profile) {
             case VANILLA -> {
@@ -167,8 +167,8 @@ public final class Main {
      * Runs the compat pass on every class Lich defines from now on: in {@code LaunchClassLoader} ahead
      * of all transformers, and in the system class loader for the classes LaunchWrapper excludes.
      */
-    private static void installCompat(Logger log, List<String> tweakClasses, String minecraft, boolean srgNames,
-                                      boolean lichMods) {
+    private static void installCompat(Logger log, List<String> tweakClasses, String minecraft, boolean forge,
+                                      boolean srgNames, boolean lichMods) {
         CompatTransformer.Builder builder = CompatTransformer.builder();
         JdkCompat.register(builder);
         AsmCompat.register(builder);
@@ -204,12 +204,12 @@ public final class Main {
         }
 
         // Fixes to the game itself, on SRG names: after FML (or Lich's remapper) has deobfuscated it, and after
-        // FML's binpatches, which checksum the bytes they patch.
+        // FML's binpatches, which checksum the bytes they patch. Lich's branding line comes with them.
         CompatTransformer.Builder gameFixes = CompatTransformer.builder();
         if ("1.7.10".equals(minecraft)) {
-            Minecraft1710.registerSrgPatches(gameFixes);
+            Minecraft1710.registerSrgPatches(gameFixes, forge);
         } else if ("1.8.9".equals(minecraft)) {
-            Minecraft189.registerSrgPatches(gameFixes);
+            Minecraft189.registerSrgPatches(gameFixes, forge);
         }
         if (srgNames) {
             CompatTransformer game = gameFixes

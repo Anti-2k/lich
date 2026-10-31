@@ -10,9 +10,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PrismComponentTest {
@@ -31,7 +31,8 @@ class PrismComponentTest {
         // Twice: installing again must update in place, not add a second entry.
         for (int i = 0; i < 2; i++) {
             PrismComponent.install(instance, "1.8.9", "1.0", List.of("--enable-native-access=ALL-UNNAMED"),
-                    Map.of("dev.lich:lich-boot:1.0", jar));
+                    List.of(new Library.Local("dev.lich:lich-boot:1.0", jar),
+                            new Library.Remote("org.ow2.asm:asm:9.8", "https://repo1.maven.org/maven2/org/ow2/asm/asm/9.8/asm-9.8.jar", "ab", 2)));
         }
 
         JsonArray components = JsonParser.parseString(Files.readString(instance.resolve("mmc-pack.json")))
@@ -47,6 +48,26 @@ class PrismComponentTest {
         assertEquals("local", patch.getAsJsonArray("+libraries").get(0).getAsJsonObject().get("MMC-hint").getAsString());
         assertEquals("--enable-native-access=ALL-UNNAMED", patch.getAsJsonArray("+jvmArgs").get(0).getAsString());
         assertTrue(Files.isRegularFile(instance.resolve("libraries/lich-boot-1.0.jar")));
+        JsonObject asm = patch.getAsJsonArray("+libraries").get(1).getAsJsonObject().getAsJsonObject("downloads").getAsJsonObject("artifact");
+        assertEquals("org/ow2/asm/asm/9.8/asm-9.8.jar", asm.get("path").getAsString());
+        assertEquals("ab", asm.get("sha1").getAsString());
+        assertFalse(Files.exists(instance.resolve("libraries/asm-9.8.jar")), "Prism downloads remote libraries itself");
+    }
+
+    @Test
+    void anUpdateDeletesTheOldVersionsJarsAndUninstallRemovesEverything(@TempDir Path instance, @TempDir Path build) throws Exception {
+        Files.writeString(instance.resolve("mmc-pack.json"), PACK);
+        Path jar = Files.write(build.resolve("boot.jar"), new byte[]{1});
+        PrismComponent.install(instance, "1.8.9", "1.0", List.of(), List.of(new Library.Local("dev.lich:lich-boot:1.0", jar)));
+        PrismComponent.install(instance, "1.8.9", "1.1", List.of(), List.of(new Library.Local("dev.lich:lich-boot:1.1", jar)));
+        assertFalse(Files.exists(instance.resolve("libraries/lich-boot-1.0.jar")));
+        assertTrue(Files.exists(instance.resolve("libraries/lich-boot-1.1.jar")));
+
+        PrismComponent.uninstall(instance);
+        assertFalse(PrismComponent.isInstalled(instance));
+        assertFalse(Files.exists(instance.resolve("libraries/lich-boot-1.1.jar")));
+        assertFalse(Files.readString(instance.resolve("mmc-pack.json")).contains("dev.lich"));
+        assertTrue(Files.readString(instance.resolve("mmc-pack.json")).contains("net.minecraft"));
     }
 
     @Test

@@ -9,7 +9,7 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * The harness's driver (PLAN.md §7), an extra LaunchWrapper tweaker, so the same jar plays the game in Forge on Java 8
+ * The harness's driver (DOCS.md §7), an extra LaunchWrapper tweaker, so the same jar plays the game in Forge on Java 8
  * and in Lich. It connects to the harness ({@code lich.harness.port}), then plays the {@link Script} on a thread of
  * its own while the game starts. LaunchWrapper loads a tweaker's package from the system class loader, so there is
  * one driver even when a mod (Essential) relaunches the whole launch, which calls the tweakers again.

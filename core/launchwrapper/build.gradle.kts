@@ -1,5 +1,5 @@
 // Lich's own implementation of net.minecraft.launchwrapper.* (LaunchWrapper 1.12's API), plus the
-// dev.lich.launchwrapper entry point that boot uses. PLAN.md §4.2.
+// dev.lich.launchwrapper entry point that boot uses. DOCS.md §4.2.
 plugins {
     id("lich.java")
 }
