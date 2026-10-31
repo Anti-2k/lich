@@ -10,6 +10,9 @@ import java.util.ArrayDeque;
  * disabled cursor reports an unbounded virtual position, so only its movement is used, as LWJGL 2 used only
  * the deltas of a grabbed mouse; the absolute position keeps moving by those deltas and is clipped to the
  * window like LWJGL 2's. The wheel counts 120 per notch, LWJGL 2's unit on every platform.
+ * <p>
+ * Grabbed movement keeps the OS's pointer acceleration, as LWJGL 2's did, unless a mod turns on raw input
+ * ({@code dev.lich.api.client.RawMouseInput}): then GLFW reads the mouse's own counts (raw input on Windows).
  */
 public final class MouseInput {
     public static final int BUTTON_COUNT = GLFW.GLFW_MOUSE_BUTTON_LAST + 1;
@@ -28,6 +31,8 @@ public final class MouseInput {
      */
     private static final boolean NO_GRAB = Boolean.getBoolean("lich.dev.noMouseGrab");
     private static boolean grabbed;
+    /** Raw mouse motion while grabbed; GLFW keeps the setting across cursor mode changes. */
+    private static boolean rawMotion;
     private static boolean clip = true;
     private static boolean inside;
     /** The pointer in LWJGL coordinates, unclipped, and the last raw position GLFW reported, converted. */
@@ -59,6 +64,37 @@ public final class MouseInput {
         current = new Event(-1, false, 0, 0, 0, x(), y(), 0);
         long window = WindowState.handle();
         inside = window != 0 && GLFW.glfwGetWindowAttrib(window, GLFW.GLFW_HOVERED) == GLFW.GLFW_TRUE;
+        applyRawMotion();
+    }
+
+    /** Whether the platform can deliver raw mouse motion (GLFW must be initialised). */
+    public static boolean isRawMotionSupported() {
+        return GLFW.glfwRawMouseMotionSupported();
+    }
+
+    public static synchronized boolean isRawMotion() {
+        return rawMotion;
+    }
+
+    /**
+     * Turns raw mouse motion on or off for grabbed movement (main thread). It takes effect at once, also while
+     * grabbed; the position is resynced so the switch makes no jump.
+     */
+    public static synchronized void setRawMotion(boolean raw) {
+        if (rawMotion == raw) {
+            return;
+        }
+        rawMotion = raw;
+        applyRawMotion();
+        resyncPosition();
+    }
+
+    private static void applyRawMotion() {
+        long window = WindowState.handle();
+        if (window == 0 || !GLFW.glfwRawMouseMotionSupported()) {
+            return;
+        }
+        GLFW.glfwSetInputMode(window, GLFW.GLFW_RAW_MOUSE_MOTION, rawMotion ? GLFW.GLFW_TRUE : GLFW.GLFW_FALSE);
     }
 
     public static synchronized void destroy() {

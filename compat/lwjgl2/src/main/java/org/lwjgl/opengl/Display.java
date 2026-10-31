@@ -250,8 +250,23 @@ public final class Display {
         }
     }
 
+    /**
+     * Off with {@code -Dlich.lateInputPoll=false}: the window messages (and so the input) the next frame uses are
+     * then the ones {@link #update()} processed before the frame limiter's sleep, as on LWJGL 2.
+     */
+    private static final boolean LATE_INPUT_POLL = !"false".equals(System.getProperty("lich.lateInputPoll"));
+
+    /**
+     * Waits for the next frame, then processes window messages again. The game calls this right after
+     * {@link #update()}, so without the second pass the mouse movement and clicks the next frame sees would be as
+     * old as the sleep: up to a whole frame at the frame rate cap. Polling twice changes nothing the game can tell
+     * apart from that: movement accumulates until it's read, and events queue in order.
+     */
     public static void sync(int fps) {
         FrameLimiter.sync(fps);
+        if (LATE_INPUT_POLL && fps > 0 && window != 0) {
+            processMessages();
+        }
     }
 
     public static String getTitle() {

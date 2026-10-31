@@ -319,9 +319,12 @@ Never redistribute Minecraft or patched Forge binaries. Patch at load time, or o
     event (GLFW sends two callbacks); repeats are queued and skipped unless enabled; printable keys get
     the code of what the layout prints on Windows/Linux (`KEY_Z` for German Z), positional on macOS;
     coordinates are framebuffer pixels from the bottom left; the wheel counts 120 per notch; grabbing
-    keeps OS mouse acceleration (no raw input); `Display.create` creates Mouse and Keyboard; window
+    keeps OS mouse acceleration (no raw input) unless a Lich mod turns raw input on (`RawMouseInput`, off by
+    default); `Display.create` creates Mouse and Keyboard; window
     messages are processed only on the main thread (Forge's splash thread swaps but doesn't poll);
-    `Display.sync` sleeps then yields like LWJGL 2's; `Sys.getTime()` is milliseconds from `nanoTime`
+    `Display.sync` sleeps then yields like LWJGL 2's, then processes window messages again, so the next frame
+    reads input from after the sleep, not from before it (`-Dlich.lateInputPoll=false` turns that off; input
+    the game reads is otherwise the same: movement accumulates, events queue in order); `Sys.getTime()` is milliseconds from `nanoTime`
     (the tick timer compares it with `nanoTime`, so its sync adjustment stays at 1: not server-visible).
   - `Sys.getVersion()` returns LWJGL 3's version, so logs and crash reports say what really ran.
   - LWJGL 3 aborts the JVM on a GL call from a thread with no context, where LWJGL 2 threw. The game's
