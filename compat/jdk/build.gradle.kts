@@ -51,14 +51,18 @@ sourceSets.main {
     resources.srcDir(nestPack200)
 }
 
-// UnsafeFields uses jdk.internal.misc.Unsafe, which the game gets through jvm-flags.txt. javac refuses
-// --add-exports together with --release, so this module compiles against the JDK 25 toolchain directly.
+// UnsafeFields uses jdk.internal.misc.Unsafe, and UnfinalizedFields implements jdk.internal.reflect.FieldAccessor,
+// which the game gets through jvm-flags.txt. javac refuses --add-exports together with --release, so this module
+// compiles against the JDK 25 toolchain directly.
 tasks.compileJava {
     options.release.unset()
-    options.compilerArgs.addAll(listOf("--add-exports", "java.base/jdk.internal.misc=ALL-UNNAMED"))
+    options.compilerArgs.addAll(listOf(
+            "--add-exports", "java.base/jdk.internal.misc=ALL-UNNAMED",
+            "--add-exports", "java.base/jdk.internal.reflect=ALL-UNNAMED"))
 }
 tasks.test {
-    jvmArgs("--add-exports", "java.base/jdk.internal.misc=ALL-UNNAMED")
+    jvmArgs("--add-exports", "java.base/jdk.internal.misc=ALL-UNNAMED",
+            "--add-exports", "java.base/jdk.internal.reflect=ALL-UNNAMED")
     val lang3: FileCollection = legacyLang3Classpath.get()
     inputs.files(lang3).withPropertyName("legacyLang3")
     jvmArgumentProviders.add(CommandLineArgumentProvider {

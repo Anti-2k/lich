@@ -60,6 +60,7 @@ public final class Main {
             System.exit(1);
         }
         ensureSafeLogging();
+        ensureJava8UserAgent();
 
         Logger log = LogManager.getLogger("Lich");
         String version = Main.class.getPackage().getImplementationVersion();
@@ -239,6 +240,20 @@ public final class Main {
     static void ensureSafeLogging() {
         if (System.getProperty("log4j.configurationFile") == null) {
             System.setProperty("log4j.configurationFile", "dev/lich/boot/log4j2-safe.xml");
+        }
+    }
+
+    /**
+     * Mods' HTTP requests (patron lists, update checks) go out as {@code Java/1.8.0_51 Java/25...} instead of
+     * {@code Java/25...}, so servers that treat Java 8 differently answer as they did on Java 8: the JDK puts
+     * {@code http.agent} before its own {@code Java/<version>}. Pastebin's Cloudflare refuses Java 8 with a 403, which
+     * mods catch, and redirects Java 25 to HTTPS with an HTML page that LLibrary 1.5.1 then parses as its patron list
+     * and crashes on. 1.8.0_51 is the Java that Mojang's launcher shipped with. Set before any connection: the JDK
+     * reads the property once.
+     */
+    static void ensureJava8UserAgent() {
+        if (System.getProperty("http.agent") == null) {
+            System.setProperty("http.agent", "Java/1.8.0_51");
         }
     }
 

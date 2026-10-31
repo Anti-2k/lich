@@ -112,5 +112,188 @@
       "sha512": "ba0427cd9ebef4e0ef138e77ccb73c012eaa6b35ca2815e90c5c521b3e01adbe60ef14daffeeffd0b95d293207ad573814bea2ed701bf7b6b960103965363a22"
     },
     "memoryMb": 3072
+  },
+  "gt-new-horizons": {
+    "name": "GT New Horizons 2.8.4",
+    "mc": "1.7.10",
+    "forge": "10.13.4.1614",
+    "source": {
+      "type": "solder",
+      "api": "http://technicsolder.usrv.eu/api/",
+      "slug": "mcnewhorizons",
+      "build": "2.8.4"
+    },
+    "memoryMb": 6144
+  },
+  "fiskheroes": {
+    "name": "Official FiskHeroes Server 1.0.3",
+    "mc": "1.7.10",
+    "forge": "10.13.4.1614",
+    "source": {
+      "type": "mrpack",
+      "url": "https://cdn.modrinth.com/data/tBsrANHA/versions/hXHMkg23/Official%20FiskHeroes%20Server%201.0.3.mrpack",
+      "sha512": "1d6dec5612f8d79a76e828f4f05b6d01b2363553562f4f65cff7aef209949e067b710a9503424de680db1411906080b1fa785e32d1f7d55217b1344bdb63ce4d"
+    },
+    "memoryMb": 4096
+  },
+  "hbm-automation": {
+    "name": "Automation Of HBM's Nuclear Tech beta 1.1.8",
+    "mc": "1.7.10",
+    "forge": "10.13.4.1614",
+    "source": {
+      "type": "mrpack",
+      "url": "https://cdn.modrinth.com/data/qBEuLzgI/versions/mkpBiNvZ/Automation%20Of%20HBM%27s%20Nuclear%20Tech%20beta%201.1.8.mrpack",
+      "sha512": "f32fcbcdcb198fa3cd628f23d00cb476a930c4bf29e376c7185650688ed5063b3f87359a9dd5f4d8485dd05857387f73c9e3ee10ec09e6f1f4956f54657a8a25"
+    },
+    "memoryMb": 4096
+  },
+  "tekxit-2": {
+    "name": "Tekxit 2 v2.25ra2",
+    "mc": "1.7.10",
+    "forge": "10.13.4.1614",
+    "source": {
+      "type": "zip",
+      "url": "https://tekxit.b-cdn.net/downloads/tekxit2/Tekxit-2-Client-v2.25ra.zip",
+      "sha512": "ed2211f487ccaf1c17dc8db13144df359a6a46c358591847c30302e9021d07ec4e4639f95438804dfeb5c2106642f807f617f7574455decd386c21e333560e03",
+      "packForge": "10.13.4.1558"
+    },
+    "memoryMb": 4096
+  },
+  "dbc-apollo": {
+    "name": "Dragon Block Apollo 1.3.1 #20",
+    "mc": "1.7.10",
+    "forge": "10.13.4.1614",
+    "source": {
+      "type": "zip",
+      "url": "https://file.apollonetworkmc.net/Dragon-Block-C-Apollo.zip",
+      "sha512": "ab62054cec964abb79204e27e665d23c38078b6964aebb96d6b4aaad8b2eccfaad95aeca763ed1d9ac130d00cefddb2ff04da65acb3663ffcd695db07def9c46"
+    },
+    "memoryMb": 4096
+  },
+  "lotr-survival": {
+    "name": "LOTR Survival 8.6",
+    "mc": "1.7.10",
+    "forge": "10.13.4.1614",
+    "source": {
+      "type": "zip",
+      "url": "https://www.dropbox.com/scl/fi/2009cj2vs7hhbal4j4moc/lotrsurvival1.0.zip?rlkey=y6jz8pp40pl9ogvln8u5760c5&st=cgqtgq6d&dl=1",
+      "sha512": "88bd69ad838ade35cdeceeeca0d419602b00c5fca3ab82c81e58af16b1c8931ee59d58af84255e2e1d55d4e4a66802f863b162a041c97e82762a303759ab156b",
+      "packForge": "10.13.4.1558"
+    },
+    "memoryMb": 4096
+  },
+  "ultimate-warfare": {
+    "name": "Ultimate Warfare 1.7.10 #19",
+    "mc": "1.7.10",
+    "forge": "10.13.4.1614",
+    "source": {
+      "type": "zip",
+      "url": "https://www.dropbox.com/s/7t6ojjbhbbnbdhp/Ultimate%20Warfare%20Base%20Pack.zip?dl=1",
+      "sha512": "e2ad0ae9bcd4e5a79040ccd79d484dce89ea8a9194b886d83f6d6e7a90c03311ffe5a3cb61622d4af7f80dbd5317bb9af782d65bfa2e1595daeee64788d0c891"
+    },
+    "memoryMb": 4096
+  },
+  "survival-industry": {
+    "name": "Survival Industry 1.7.0",
+    "mc": "1.7.10",
+    "forge": "10.13.4.1614",
+    "source": {
+      "type": "atlauncher",
+      "pack": "SurvivalIndustry",
+      "version": "1.7.0"
+    },
+    "memoryMb": 4096
+  },
+  "resonant-rise-3": {
+    "name": "Resonant Rise 3.4.0.3",
+    "mc": "1.7.10",
+    "forge": "10.13.4.1614",
+    "source": {
+      "type": "atlauncher",
+      "pack": "ResonantRise",
+      "version": "3.4.0.3"
+    },
+    "memoryMb": 4096
+  },
+  "ftb-daybreaker": {
+    "name": "FTB Horizons: Daybreaker 1.2.0",
+    "mc": "1.7.10",
+    "forge": "10.13.4.1614",
+    "source": {
+      "type": "ftb",
+      "pack": "17",
+      "version": "109",
+      "packForge": "10.13.4.1448"
+    },
+    "memoryMb": 4096
+  },
+  "eldritch-revolution": {
+    "name": "Eldritch Revolution 3.20",
+    "mc": "1.8.9",
+    "forge": "11.15.1.2318",
+    "source": {
+      "type": "atlauncher",
+      "pack": "EldritchRevolution",
+      "version": "EldritchRevolution3.20.20161014",
+      "packForge": "11.15.1.1902"
+    },
+    "memoryMb": 3072
+  },
+  "solitarycraft-vanillaplus": {
+    "name": "SolitaryCraft VanillaPlus",
+    "mc": "1.8.9",
+    "forge": "11.15.1.2318",
+    "source": {
+      "type": "atlauncher",
+      "pack": "SolitaryCraft",
+      "version": "VanillaPlus",
+      "packForge": "11.15.1.1736"
+    },
+    "memoryMb": 3072
+  },
+  "all-lucky-block": {
+    "name": "Lucky Block Add On 1.8.9 1.5.1",
+    "mc": "1.8.9",
+    "forge": "11.15.1.2318",
+    "source": {
+      "type": "zip",
+      "url": "https://www.dropbox.com/s/kppyc3rnf1c0kt5/modpack.zip?dl=1",
+      "sha512": "e721f8203fb2ebc4ffa38b41b0f460a333e3cda714f2eda87852ba167b3ac4901059a3530ddd19f1cd0cdc63ac9aefeca17d9eed0774fd4a19c2b89f65a7e395",
+      "packForge": "11.15.1.1855"
+    },
+    "memoryMb": 3072
+  },
+  "cubesoft": {
+    "name": "CubeSoft Pack 1.0.0",
+    "mc": "1.8.9",
+    "forge": "11.15.1.2318",
+    "source": {
+      "type": "mrpack",
+      "url": "https://cdn.modrinth.com/data/t2q2VlTN/versions/wQhkS3cC/CubeSoft%20Pack-1.0.0.mrpack",
+      "sha512": "93bb72d97ad2fee4a22729ce91a38158db7a5ed4f478c381a42fb2b55f6f18665f781a339f5b752dbdb16662018a7ad7f42b438ab8e2e2d219e264ae7ac7d28c"
+    },
+    "memoryMb": 3072
+  },
+  "dunkirk-spirit": {
+    "name": "Dunkirk Spirit 1.0 (Client)",
+    "mc": "1.8.9",
+    "forge": "11.15.1.2318",
+    "source": {
+      "type": "mrpack",
+      "url": "https://cdn.modrinth.com/data/2dkEsdQw/versions/4HyXmvka/Dunkirk%20Spirit%28Client%29.mrpack",
+      "sha512": "a60c7b027d876ddc60b9cffbc4629690b96b005ba06b7f17584559acc25b8ee0bb298d3571207a2f4f4c4ded6513cb841d4a7a4ee1cd511a4318e7a698fb5732"
+    },
+    "memoryMb": 3072
+  },
+  "bountiful-redux": {
+    "name": "Bountiful Redux 1.4.0",
+    "mc": "1.8.9",
+    "forge": "11.15.1.2318",
+    "source": {
+      "type": "mrpack",
+      "url": "https://cdn.modrinth.com/data/TnHsGOoa/versions/Mk31SzMs/Bountiful%20Redux%201.4.0.mrpack",
+      "sha512": "f1f8cf9a3b700e3d9533b438e7ac367ac857a8b32423a728bf0969381cf621cf9bd8b3df73578ee1a06aead511c7d345959a6949c1b92595f756cce89130a4ab"
+    },
+    "memoryMb": 3072
   }
 }
