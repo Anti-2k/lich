@@ -127,6 +127,13 @@ First release: **0.3.0**. Running Forge and its mods on Java 25 works and is tes
 v0 work (one real client runs on them), and there's a Prism installer. Still to come: Linux and macOS testing,
 a first-party performance mod, other launchers and mod developer docs. See the [roadmap](DOCS.md#8-roadmap).
 
+## License
+
+Lich is licensed under the [GNU Lesser General Public License v3.0](LICENSE), which builds on the
+[GNU GPL v3.0](COPYING). You can ship mods for Lich under any license you like. Changes to Lich itself must
+stay under the LGPL. The ASM 5 classes in `compat/asm` are ASM's own code, under ASM's BSD license
+(`compat/asm/src/main/resources/META-INF/LICENSE-ASM.txt`).
+
 ## Disclaimer
 
 Lich is not affiliated with Mojang, Microsoft or the Forge project. It doesn't ship Minecraft or Forge: the
