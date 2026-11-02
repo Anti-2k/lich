@@ -6,6 +6,7 @@ build/
 .kotlin/
 
 .gradle-home/
+/site/
 *.log
 *.iml
 *.ipr

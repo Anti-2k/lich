@@ -584,6 +584,10 @@ Three commons-compress behaviors needed working around (`Pack200Test` covers the
 
 ## 5. Lich mods
 
+This section is the design. For how to write a mod (project setup, every field of `lich.mod.json`, every event, Mixins,
+wideners, multi-version builds) see the [mod developer guide](docs/modding/README.md), which says what is implemented
+today and what is still reserved (`provides`, raw `transformers`).
+
 ### 5.1 Format: `lich.mod.json` at the jar root
 ```jsonc
 {
@@ -882,7 +886,7 @@ differ by 1 ulp between JDKs **(verify)**.
 | 4. Forge mods ✅ | Mixin provider, redirect table, reflection compat, JDK shims, modpack harness (§7) | Done: whole modpacks join and play on Lich with the same mixins applied as on Java 8 |
 | 5. Lich mods ✅ | `remap`, `loader`, `lich.mod.json`, `api` (lifecycle, events, HUD, keybinds, config; hooks woven on demand, §5.2), FML-hiding, dual jars | Done on both versions, with and without Forge |
 | 6. LWJGL 3 🟡 | `compat-lwjgl2` + redirects | Windows x64 done (§2.5). Left: Linux (X11, Wayland), macOS Apple Silicon, controllers |
-| 7. Ship 🟡 | Installer, Prism pack, docs, compat list, mod-dev docs and template | 0.3.0: Prism installer (§4.6), README tables, in-game branding. 0.3.1: multi-version Lich mod jars (§5.1). Left: other launchers, mod-dev docs and template |
+| 7. Ship 🟡 | Installer, Prism pack, docs, compat list, mod-dev docs and template | 0.3.0: Prism installer (§4.6), README tables, in-game branding. 0.3.1: multi-version Lich mod jars (§5.1). Mod developer guide in `docs/modding` (2026-11-03). Left: other launchers, publishing the API and the Gradle plugin (a mod is still a module in a Lich checkout), project template |
 | later | 1.12.2 (`compat-forge-1.12.2`, `compat-mc-1.12.2`, `api-1.12.2`) | — |
 
 Note on startup: Java 25's AOT cache (JEP 483/514/515) doesn't cache classes from custom class loaders,

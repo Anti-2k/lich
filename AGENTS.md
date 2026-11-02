@@ -4,7 +4,11 @@ Lich is a client-side runtime and mod loader that runs Minecraft 1.7.10 and 1.8.
 unmodified Java 8 Forge mods through real Forge, patched at load time, and its own mod format
 (`lich.mod.json`) for mods written for Lich. Package root: `dev.lich`.
 
-`README.md` is the user-facing overview. **`DOCS.md` is the source of truth** for the design, the decisions
+`README.md` is the user-facing overview. `docs/modding/` is the guide for Lich mod authors: when a change touches what
+a mod sees (`lich.mod.json`, the `dev.lich.api` events and hook ids, the `dev.lich.mod` plugin, wideners), update the
+matching page there too. The guide is published to GitHub Pages from `main` (`mkdocs.yml`, `.github/workflows/docs.yml`):
+a new page goes in `mkdocs.yml`'s `nav`, links leaving `docs/modding/` use full GitHub URLs, and the strict build
+(`pip install -r docs/requirements.txt`, `mkdocs build`) fails on broken links. **`DOCS.md` is the source of truth** for the design, the decisions
 already made (own LaunchWrapper, SRG runtime namespace, client only, public-server safety) and the phased
 roadmap. Read it before starting a phase, and update it when a decision changes or a **(verify)** item gets
 checked. Code comments cite it by section (`DOCS.md §2.5`), so keep its section numbers stable. If the

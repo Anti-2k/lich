@@ -1,0 +1,58 @@
+# The mod developer guide (docs/modding) as a site on GitHub Pages, built by .github/workflows/docs.yml.
+# Preview locally: pip install -r docs/requirements.txt, then mkdocs serve. A new page goes in nav below.
+site_name: Lich mod developer guide
+site_url: https://anti-2k.github.io/lich/
+repo_url: https://github.com/Anti-2k/lich
+repo_name: Anti-2k/lich
+edit_uri: edit/main/docs/modding/
+docs_dir: docs/modding
+
+# Fail the build on broken links, missing anchors and pages left out of nav.
+strict: true
+validation:
+  omitted_files: warn
+  absolute_links: warn
+  unrecognized_links: warn
+  anchors: warn
+
+nav:
+  - Overview: README.md
+  - getting-started.md
+  - lich-mod-json.md
+  - lifecycle.md
+  - events-and-hooks.md
+  - mixins.md
+  - access-wideners.md
+  - multi-version.md
+  - forge-interop.md
+  - server-safety.md
+  - troubleshooting.md
+
+theme:
+  name: material
+  features:
+    - navigation.footer
+    - content.code.copy
+    - content.action.edit
+    - search.highlight
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle:
+        icon: material/brightness-7
+        name: Dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle:
+        icon: material/brightness-4
+        name: Light mode
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.highlight
+  - pymdownx.inlinehilite
+  - pymdownx.superfences

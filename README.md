@@ -23,8 +23,9 @@ what the game needs to run on Java 25.
   packets. Your client looks and behaves like a normal vanilla/Forge client.
 - **Safer logging.** Log4Shell lookups are filtered even when the launcher passes no log config, and the
   access token is kept out of the game log.
-- **Lich mods.** Own format with entrypoints, events, replaceable subsystems, Mixin 0.8 + MixinExtras and
-  access wideners. Runs with or without Forge, on SRG names in both cases, so one jar covers both.
+- **Lich mods.** Own format with entrypoints, events, Mixin 0.8 + MixinExtras and access wideners. Runs with or
+  without Forge, on SRG names in both cases, so one jar covers both. Writing one is covered in the
+  [mod developer guide](docs/modding/README.md).
 
 ## Supported versions
 
@@ -105,7 +106,8 @@ against. Gradle doesn't download JDKs for this project, so install them yourself
 ```
 
 `tools/devlaunch` downloads the game, Forge and their libraries into `run/` and starts the game offline.
-Contributor and agent notes are in [AGENTS.md](AGENTS.md).
+Contributor and agent notes are in [AGENTS.md](AGENTS.md). Writing a Lich mod? Start with the
+[mod developer guide](docs/modding/README.md).
 
 ## How it works
 
@@ -124,8 +126,9 @@ The full design, every Java 25 breakage and its fix, the Lich mod format and the
 ## Project status
 
 Current release: **0.3.1** (first release: 0.3.0). Running Forge and its mods on Java 25 works and is tested
-with modpacks; Lich mods v0 work, one jar can target both 1.7.10 and 1.8.9, and there's a Prism installer. Still to come: Linux and macOS testing,
-other launchers and mod developer docs. See the [roadmap](DOCS.md#8-roadmap).
+with modpacks; Lich mods v0 work, one jar can target both 1.7.10 and 1.8.9, and there's a Prism installer. Mod developer docs are in [docs/modding](docs/modding/README.md). Still to come: Linux and macOS testing, other
+launchers, and publishing the API and Gradle plugin so a mod can live outside this repository. See the
+[roadmap](DOCS.md#8-roadmap).
 
 ## License
 
