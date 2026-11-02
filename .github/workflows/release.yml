@@ -1,0 +1,94 @@
+# Pushing a tag v<version> builds and tests that commit, then opens a DRAFT GitHub release with the installer
+# jar and its SHA-256. Write the notes (Install / What's new) on the draft and publish it by hand.
+#
+#   1. bump version= in gradle.properties (and mcdev/gradle.properties), commit
+#   2. git tag v0.3.2 && git push origin main v0.3.2
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to (re)build a draft release for, e.g. v0.3.1"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest # Lich is tested on Windows x64; build the shipped jar there
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "25"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: true
+
+      - uses: actions/cache/restore@v4
+        with:
+          path: ~/.gradle/caches/lich-mcdev
+          key: lich-mcdev-${{ runner.os }}-${{ hashFiles('mcdev/gradle-plugin/src/main/java/dev/lich/mcdev/MinecraftSetup.java') }}
+          restore-keys: lich-mcdev-${{ runner.os }}-
+
+      # The tag has to name the version the jar is built as, or the release and the jar disagree.
+      - name: Check tag against gradle.properties
+        id: version
+        shell: bash
+        run: |
+          version=$(sed -n 's/^version=//p' gradle.properties | tr -d '\r')
+          if [ "v$version" != "$TAG" ]; then
+            echo "::error::Tag $TAG doesn't match version=$version in gradle.properties"
+            exit 1
+          fi
+          mcdev=$(sed -n 's/^version=//p' mcdev/gradle.properties | tr -d '\r')
+          if [ "$mcdev" != "$version" ]; then
+            echo "::error::mcdev/gradle.properties has version=$mcdev, gradle.properties has $version"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Build and test
+        shell: bash
+        run: bash ./gradlew build --stacktrace
+
+      - name: Draft release
+        shell: bash
+        run: |
+          version='${{ steps.version.outputs.version }}'
+          jar="tools/installer/build/installer/lich-installer-$version.jar"
+          sha=$(sha256sum "$jar" | cut -d' ' -f1)
+          cat > notes.md <<EOF
+          ## Install
+
+          1. Install Java 25 or newer (e.g. [Temurin](https://adoptium.net/)).
+          2. Close Prism Launcher, then open \`lich-installer-$version.jar\` (double-click, or \`java -jar lich-installer-$version.jar\`).
+          3. Pick a new instance (1.8.9 or 1.7.10, with or without Forge) or one you already have, and press **Install**.
+          4. Start Prism and launch it.
+
+          Only Prism Launcher is supported for now. More in the [README](https://github.com/${{ github.repository }}#installing).
+
+          ## What's new
+
+          - TODO
+
+          \`lich-installer-$version.jar\` SHA-256: \`$sha\`
+          EOF
+          # Never touch an existing release: its notes carry the shipped jar's SHA-256.
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "::error::A release for $TAG already exists; delete it first to rebuild"
+            exit 1
+          fi
+          gh release create "$TAG" "$jar" --draft --verify-tag --title "Lich $version" --notes-file notes.md

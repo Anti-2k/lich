@@ -1,0 +1,70 @@
+# Builds every module and runs the unit tests on each push and pull request, on Windows (the tested platform)
+# and Linux. The installer jar each run builds is kept as an artifact, so any commit can be tried in Prism.
+name: ci
+
+on:
+  push:
+    branches: [main]
+    tags-ignore: ["**"] # tags go through release.yml
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # Temurin 25 builds everything and runs the daemon (gradle/gradle-daemon-jvm.properties). Toolchain
+      # auto-download is off, so Gradle has to find this one through JAVA_HOME.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "25"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          # Only main writes the shared cache; PRs and branches read it.
+          cache-read-only: ${{ github.ref != 'refs/heads/main' }}
+
+      # mcdev's Minecraft setup (client jars, MCP/SRG mappings, generated MCP-named jars) lives outside the
+      # caches setup-gradle keeps. Its key follows MinecraftSetup.java, whose version constant decides when
+      # the generated files are stale.
+      - uses: actions/cache@v4
+        with:
+          path: ~/.gradle/caches/lich-mcdev
+          key: lich-mcdev-${{ runner.os }}-${{ hashFiles('mcdev/gradle-plugin/src/main/java/dev/lich/mcdev/MinecraftSetup.java') }}
+          restore-keys: lich-mcdev-${{ runner.os }}-
+
+      # bash: gradlew isn't executable in git (mode 100644).
+      - name: Build and test
+        shell: bash
+        run: bash ./gradlew build --stacktrace
+
+      - name: Test reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports-${{ matrix.os }}
+          path: "**/build/reports/tests/"
+          if-no-files-found: ignore
+
+      - name: Installer jar
+        if: matrix.os == 'windows-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: lich-installer-${{ github.sha }}
+          path: tools/installer/build/installer/lich-installer-*.jar
+          if-no-files-found: error
+          retention-days: 30
