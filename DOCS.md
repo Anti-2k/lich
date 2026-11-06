@@ -24,7 +24,7 @@ jars before building on them. Dates are when a finding was made or a decision ta
 | Java | 25 for Lich and Lich mods. Forge mods stay Java 8 bytecode. |
 | Game logic | Core touches the game where Java 25 needs it to (JDK/ASM redirects, reflection compat, fixes for bugs Java 25 exposes such as the sound race). With no Lich mods the game plays as vanilla or Forge does on Java 8. |
 | Hooks | Lich mods get hooks as deep as the game allows (§5.2): events, replaceable subsystems, Mixins, access wideners, raw transformers, so mods have as much control as they need. A hook is woven only when a loaded mod asks for it. |
-| Branding | A `Lich <version> on Java <n>` line where the game says what it runs on: an extra line in FML's branding list under Forge, appended to the main menu's version line in the vanilla profile. Text only; the brand servers see stays `vanilla`/`fml,forge` (§6.2). |
+| Branding | Lich's lines where the game says what it runs on. Under Forge, FML's "Powered by Forge" line is dropped and two entries go into its branding list, before FML's mod count: `Lich <version> with Forge <forge version> on Java <n>` and the Lich mods' `<n> mods loaded, <m> mods active`. In the vanilla profile, the main menu shows `Minecraft <mc>`, `Lich <version> on Java <n>` and the same Lich mod count, top to bottom. Text only; the brand servers see stays `vanilla`/`fml,forge` (§6.2). |
 | Releases | The first public release is 0.3.0. Lich's version (`gradle.properties`) is what Prism's component list, the boot log line, the branding and the installer show. |
 
 ---

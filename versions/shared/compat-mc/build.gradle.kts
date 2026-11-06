@@ -6,6 +6,9 @@ plugins {
 
 dependencies {
     implementation(project(":transform"))
+    // The Lich mod count in the branding. The loader is a class loader exclusion: one copy at runtime.
+    compileOnly(project(":loader"))
+    testRuntimeOnly(project(":loader"))
     testImplementation(libs.asm)
     testImplementation(libs.asm.tree)
 }

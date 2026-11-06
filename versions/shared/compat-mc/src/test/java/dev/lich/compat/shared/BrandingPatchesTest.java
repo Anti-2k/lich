@@ -9,6 +9,7 @@ import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.tree.ClassNode;
 
 import java.lang.reflect.Method;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
 
@@ -22,28 +23,92 @@ class BrandingPatchesTest {
         List<String> getAdditionalBrandingInformation();
     }
 
-    @Test
-    void lichFollowsFmlsExtraBranding() throws Exception {
-        String sided = SidedHandler.class.getName().replace('.', '/');
-        // static List computeBranding(SidedHandler h) { return h.getAdditionalBrandingInformation(); }
-        Method method = patched("test/FmlHandler", new BrandingPatches.FmlBranding(), "computeBranding",
-                "(L" + sided + ";)Ljava/util/List;", code -> {
-                    code.visitVarInsn(Opcodes.ALOAD, 0);
-                    code.visitMethodInsn(Opcodes.INVOKEINTERFACE, sided, "getAdditionalBrandingInformation", "()Ljava/util/List;", true);
-                    code.visitInsn(Opcodes.ARETURN);
-                });
-        SidedHandler handler = () -> List.of("OptiFine");
-        assertEquals(List.of("OptiFine", Branding.line()), method.invoke(null, handler));
+    /** Stands in for guava's ImmutableList (the patch finds the builder by its name). */
+    public static final class ImmutableList {
+        private ImmutableList() {
+        }
+
+        public static final class Builder {
+            private final List<Object> items = new ArrayList<>();
+
+            public Builder add(Object item) {
+                items.add(item);
+                return this;
+            }
+
+            public Builder addAll(Iterable<?> more) {
+                more.forEach(items::add);
+                return this;
+            }
+
+            public List<Object> build() {
+                return items;
+            }
+        }
+    }
+
+    /** Stands in for the main menu's draw target: records each string and its distance from the bottom. */
+    public static final class Screen {
+        public static final List<String> DRAWN = new ArrayList<>();
+        public int height = 100;
+        public net.minecraft.client.gui.FontRenderer font;
+
+        public void drawString(net.minecraft.client.gui.FontRenderer font, String text, int x, int y, int color) {
+            DRAWN.add((height - y) + ":" + text);
+        }
     }
 
     @Test
-    void vanillaMenuLineGetsLichAppended() throws Exception {
-        Method method = patched("test/MainMenu", new BrandingPatches.MainMenu("Minecraft 1.8.9"), "versionLine",
-                "()Ljava/lang/String;", code -> {
-                    code.visitLdcInsn("Minecraft 1.8.9");
+    void lichFollowsFmlsExtraBrandingAndCountsItsMods() throws Exception {
+        String sided = SidedHandler.class.getName().replace('.', '/');
+        String builder = ImmutableList.Builder.class.getName().replace('.', '/');
+        // static List computeBranding(SidedHandler h) { return new Builder().addAll(h.getAdditional...()).build(); }
+        // (FML's own mod count is added after that call, so it ends up after Lich's lines.)
+        Method method = patched("test/FmlHandler", new BrandingPatches.FmlBranding(), "computeBranding",
+                "(L" + sided + ";)Ljava/util/List;", code -> {
+                    code.visitTypeInsn(Opcodes.NEW, builder);
+                    code.visitInsn(Opcodes.DUP);
+                    code.visitMethodInsn(Opcodes.INVOKESPECIAL, builder, "<init>", "()V", false);
+                    code.visitVarInsn(Opcodes.ALOAD, 0);
+                    code.visitMethodInsn(Opcodes.INVOKEINTERFACE, sided, "getAdditionalBrandingInformation", "()Ljava/util/List;", true);
+                    code.visitMethodInsn(Opcodes.INVOKEVIRTUAL, builder, "addAll", "(Ljava/lang/Iterable;)L" + builder + ";", false);
+                    code.visitMethodInsn(Opcodes.INVOKEVIRTUAL, builder, "build", "()Ljava/util/List;", false);
                     code.visitInsn(Opcodes.ARETURN);
                 });
-        assertEquals("Minecraft 1.8.9 / " + Branding.line(), method.invoke(null));
+        SidedHandler handler = () -> List.of("Powered by Forge 11.15.1.2318", "OptiFine");
+        assertEquals(List.of("OptiFine", Branding.line("11.15.1.2318"), Branding.modCountLine()),
+                method.invoke(null, handler));
+        assertTrue(Branding.line("11.15.1.2318").matches("Lich \\S+ with Forge 11\\.15\\.1\\.2318 on Java \\d+"),
+                Branding.line("11.15.1.2318"));
+        assertEquals("0 mods loaded, 0 mods active", Branding.modCountLine());
+    }
+
+    @Test
+    void vanillaMenuDrawsLichLinesAboveTheVersion() throws Exception {
+        String screen = Screen.class.getName().replace('.', '/');
+        // void draw(Screen s) { String v = "Minecraft 1.8.9"; s.drawString(s, v, 2, s.height - 10, -1); }
+        Method method = patched("test/MainMenu", new BrandingPatches.MainMenu("Minecraft 1.8.9"), "draw",
+                "(L" + screen + ";)V", code -> {
+                    code.visitLdcInsn("Minecraft 1.8.9");
+                    code.visitVarInsn(Opcodes.ASTORE, 1);
+                    code.visitVarInsn(Opcodes.ALOAD, 0);
+                    code.visitVarInsn(Opcodes.ALOAD, 0);
+                    code.visitFieldInsn(Opcodes.GETFIELD, screen, "font", "Lnet/minecraft/client/gui/FontRenderer;");
+                    code.visitVarInsn(Opcodes.ALOAD, 1);
+                    code.visitInsn(Opcodes.ICONST_2);
+                    code.visitVarInsn(Opcodes.ALOAD, 0);
+                    code.visitFieldInsn(Opcodes.GETFIELD, screen, "height", "I");
+                    code.visitIntInsn(Opcodes.BIPUSH, 10);
+                    code.visitInsn(Opcodes.ISUB);
+                    code.visitInsn(Opcodes.ICONST_M1);
+                    code.visitMethodInsn(Opcodes.INVOKEVIRTUAL, screen, "drawString",
+                            "(Lnet/minecraft/client/gui/FontRenderer;Ljava/lang/String;III)V", false);
+                    code.visitInsn(Opcodes.RETURN);
+                });
+        Screen.DRAWN.clear();
+        method.invoke(null, new Screen());
+        assertEquals(List.of("30:Minecraft 1.8.9", "20:" + Branding.line(), "10:" + Branding.modCountLine()),
+                Screen.DRAWN);
         assertTrue(Branding.line().matches("Lich \\S+ on Java \\d+"), Branding.line());
     }
 
