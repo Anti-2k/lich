@@ -41,7 +41,7 @@ final class MinecraftSetup {
     private static final String FORGE_MAVEN = "https://maven.minecraftforge.net/";
     /**
      * Where a version's MCP names come from: the names its Forge mods are written against, so their code ports to
-     * Lich unchanged. For 1.8.9 that's stable_22. For 1.7.10 it's the names Forge 1.7.10 ships in its userdev jar
+     * Lich unchanged. For 1.8.9 that's stable_22, for 1.12.2 stable_39. For 1.7.10 it's the names Forge 1.7.10 ships in its userdev jar
      * ({@code conf/}), which ForgeGradle and RetroFuturaGradle use by default; stable_12 differs from them (it names
      * many members those leave as {@code func_}/{@code field_}, and renames a few, like {@code fontRenderer}).
      *
@@ -53,6 +53,8 @@ final class MinecraftSetup {
     }
 
     private static final Map<String, NameSource> NAMES = Map.of(
+            // stable_39 is the last MCP export, and ForgeGradle 2.3's default for 1.12.2.
+            "1.12.2", new NameSource("de/oceanlabs/mcp/mcp_stable/39-1.12/mcp_stable-39-1.12.zip", "mcp_stable.zip", "", null),
             "1.7.10", new NameSource("net/minecraftforge/forge/1.7.10-10.13.4.1614-1.7.10/forge-1.7.10-10.13.4.1614-1.7.10-userdev.jar",
                     "forge-userdev.jar", "conf/", "5670a6438e76598e1d6e4e190982d80a0d626a7c"),
             "1.8.9", new NameSource("de/oceanlabs/mcp/mcp_stable/22-1.8.9/mcp_stable-22-1.8.9.zip", "mcp_stable.zip", "", null));

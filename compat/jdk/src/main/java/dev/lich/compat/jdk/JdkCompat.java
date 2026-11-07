@@ -33,14 +33,18 @@ public final class JdkCompat {
                 .redirect("java/lang/System", "setSecurityManager", "(Ljava/lang/SecurityManager;)V", SHIMS + "SystemShims")
                 // Writing static finals and creating enum constants: Forge's ObjectHolderRef and EnumHelper,
                 // and every mod that copied them.
+                .renameType("sun/reflect/Reflection", REFLECT + "Reflection")
+                .renameString("sun.reflect.Reflection", "dev.lich.compat.jdk.reflect.Reflection")
                 .renameType("sun/reflect/FieldAccessor", REFLECT + "FieldAccessor")
                 .renameType("sun/reflect/ConstructorAccessor", REFLECT + "ConstructorAccessor")
                 .renameString("sun.reflect.FieldAccessor", "dev.lich.compat.jdk.reflect.FieldAccessor")
                 .renameString("sun.reflect.ConstructorAccessor", "dev.lich.compat.jdk.reflect.ConstructorAccessor")
                 .renameString("sun.reflect.ReflectionFactory", "dev.lich.compat.jdk.reflect.ReflectionFactory",
                         "newFieldAccessor", "newConstructorAccessor")
+                // In every class: mods look Field.modifiers up through helpers that take the name as an
+                // argument (IC2's ReflectionUtil.getField, for GraviSuite), then write it where the name is.
                 .redirect("java/lang/Class", "getDeclaredField", "(Ljava/lang/String;)Ljava/lang/reflect/Field;",
-                        REFLECT + "ReflectionShims", "modifiers")
+                        REFLECT + "ReflectionShims")
                 .redirect("java/lang/reflect/Field", "set", "(Ljava/lang/Object;Ljava/lang/Object;)V",
                         REFLECT + "ReflectionShims", "modifiers")
                 .redirect("java/lang/reflect/Field", "setInt", "(Ljava/lang/Object;I)V",
@@ -58,8 +62,14 @@ public final class JdkCompat {
                 .filterFirstArgument("java/net/URLClassLoader", "<init>", "([Ljava/net/URL;)V", SHIMS + "UrlClassLoaders", "withoutNulls")
                 .filterFirstArgument("java/net/URLClassLoader", "<init>", "([Ljava/net/URL;Ljava/lang/ClassLoader;)V",
                         SHIMS + "UrlClassLoaders", "withoutNulls")
+                // Java 9+ parses UUID strings more strictly, and overlong groups to other values (UuidConstants).
+                .patchWhere(new UuidConstants(), "java/util/UUID", "fromString")
+                // A null loader only finds the JDK's own script engines, which have no Nashorn since Java 15.
+                .filterFirstArgument("javax/script/ScriptEngineManager", "<init>", "(Ljava/lang/ClassLoader;)V",
+                        SHIMS + "ScriptEngines", "withNashorn")
                 // The game's commons-lang3 doesn't know Java 9+ version strings.
                 .patch(CommonsLangJavaVersion.CLASS, new CommonsLangJavaVersion())
+                .patch(ZenUtilsPlatform.CLASS, new ZenUtilsPlatform())
                 // Java 9+ checks that method handles to interface methods say so; ASM 5.0-era tools didn't.
                 .fixInterfaceHandles(ClassFiles::isInterface);
     }

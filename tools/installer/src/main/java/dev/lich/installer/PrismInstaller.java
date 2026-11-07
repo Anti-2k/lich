@@ -27,7 +27,7 @@ public final class PrismInstaller {
 
             Options:
               --instance <folder|name>  add Lich to this instance (its folder, or its name in Prism)
-              --mc <1.8.9|1.7.10>       without --instance: create a new instance for this version (default 1.8.9)
+              --mc <version>            1.7.10, 1.8.9 or 1.12.2; without --instance, the new instance's version (default 1.8.9)
               --name <name>             the new instance's name (default "<mc> Forge (Lich)")
               --no-forge                the new instance gets no Forge (Lich runs vanilla too)
               --yes                     allow changing an instance's Forge build to the one Lich supports
@@ -239,7 +239,7 @@ public final class PrismInstaller {
             return 0;
         }
         if (!PrismInstance.FORGE_VERSIONS.containsKey(mc)) {
-            throw new InstallerException("Lich supports Minecraft 1.7.10 and 1.8.9, not " + mc + ".");
+            throw new InstallerException("Lich supports Minecraft " + PrismInstance.supportedText() + ", not " + mc + ".");
         }
         if (PrismLauncher.isRunning() && !force) {
             throw new InstallerException("Prism Launcher is running. Close it first (it would undo the changes), or pass --force.");

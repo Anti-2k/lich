@@ -10,10 +10,12 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.jar.JarEntry;
 import java.util.jar.JarOutputStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -27,10 +29,16 @@ class ScenarioTest {
 
     @Test
     void theFullScenarioLeavesOutTheGalleryUnlessThePackAsks() {
-        assertEquals(List.of("boot", "mods", "server", "world", "spawn", "tour", "inventory", "hold", "save", "reload", "exit"),
+        assertEquals(List.of("boot", "server", "world", "spawn", "tour", "inventory", "hold", "save", "reload", "exit"),
                 Scenario.of(PACK, null, 20, true, null).steps());
-        assertEquals(List.of("boot", "mods", "world", "spawn", "tour", "inventory", "gallery", "hold", "save", "reload", "exit"),
+        assertEquals(List.of("boot", "world", "spawn", "tour", "inventory", "gallery", "hold", "save", "reload", "exit"),
                 Scenario.of(PACK, null, 20, false, true).steps());
+    }
+
+    @Test
+    void theModListOnlyRunsWhenAskedFor() {
+        assertEquals(List.of("boot", "mods", "exit"), Scenario.of(PACK, "mods", 20, true, null, true, Set.of()).steps());
+        assertEquals(List.of("boot", "exit"), Scenario.of(PACK, "mods", 20, true, null).steps());
     }
 
     @Test
@@ -43,12 +51,23 @@ class ScenarioTest {
     }
 
     @Test
+    void skipGoesStraightToTheWorld() {
+        Scenario scenario = Scenario.of(PACK, null, 20, true, null, true, Set.of("mods", "server"));
+        assertEquals(List.of("boot", "world", "spawn", "tour", "inventory", "hold", "save", "reload", "exit"), scenario.steps());
+        assertFalse(scenario.server(), "no test server to start");
+        assertEquals(List.of("boot", "exit"), Scenario.of(PACK, "server", 20, true, null, false, Set.of("server")).steps(),
+                "until still stops at a skipped step");
+        assertThrows(IllegalArgumentException.class, () -> Scenario.of(PACK, null, 20, true, null, false, Set.of("world")));
+        assertThrows(IllegalArgumentException.class, () -> Scenario.of(PACK, null, 20, true, null, false, Set.of("nap")));
+    }
+
+    @Test
     void theDriverGetsItsSettings() {
         Map<String, String> p = Scenario.of(PACK, null, 30, true, null).properties(PACK, 1234, 25599);
         assertEquals("1234", p.get("lich.harness.port"));
         assertEquals("127.0.0.1:25599", p.get("lich.harness.server"));
         assertEquals("30", p.get("lich.harness.hold"));
-        assertEquals("default", p.get("lich.harness.worldType"));
+        assertEquals("screen", p.get("lich.harness.worldType"));
         assertNull(p.get("lich.harness.save"));
     }
 
@@ -77,16 +96,17 @@ class ScenarioTest {
 
     @Test
     void aBaselineCutToFewerStepsForgetsALaterFailure() {
-        Scenario full = Scenario.of(PACK, null, 20, false, null);
+        Scenario full = Scenario.of(PACK, null, 20, false, null, true, Set.of());
+        Scenario toMods = Scenario.of(PACK, "mods", 20, false, null, true, Set.of());
         RunResult crashedInTour = withSteps(Runs.failed("forge", "tour", RunResult.Ending.CRASHED, "boom"), full.steps(), "k");
-        RunResult cut = Baseline.cut(crashedInTour, Scenario.of(PACK, "mods", 20, false, null));
+        RunResult cut = Baseline.cut(crashedInTour, toMods);
         assertEquals(List.of("boot", "mods", "exit"), cut.steps().stream().map(RunResult.Step::name).toList());
         assertEquals(RunResult.Ending.COMPLETED, cut.ending());
         assertEquals(Verdict.Kind.PASS, Verdict.of(withSteps(Runs.completed("lich-forge"), cut.steps().stream()
                 .map(RunResult.Step::name).toList(), null), cut).kind());
 
         RunResult crashedInMods = withSteps(Runs.failed("forge", "mods", RunResult.Ending.CRASHED, "boom"), full.steps(), "k");
-        assertEquals(RunResult.Ending.CRASHED, Baseline.cut(crashedInMods, Scenario.of(PACK, "mods", 20, false, null)).ending());
+        assertEquals(RunResult.Ending.CRASHED, Baseline.cut(crashedInMods, toMods).ending());
     }
 
     @Test

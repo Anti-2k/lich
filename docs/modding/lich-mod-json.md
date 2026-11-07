@@ -76,11 +76,12 @@ A whitelist: one string or a list, each entry an exact version or a [range](#ver
 "minecraft": "1.8.9"
 "minecraft": ["1.7.10", "1.8.9"]
 "minecraft": ">=1.7.10 <1.9"
+"minecraft": ">=1.12 <1.13"
 ```
 
 The mod loads if **any** entry accepts the running version. Otherwise Lich reports which versions the mod is for:
-"Example Mod (examplemod.jar) is for Minecraft 1.8.9, not 1.7.10". Lich supports exactly 1.7.10 and 1.8.9 today, so
-`>=1.7.10 <1.9` currently means both.
+"Example Mod (examplemod.jar) is for Minecraft 1.8.9, not 1.7.10". Lich supports exactly 1.7.10, 1.8.9 and 1.12.2 today, so
+`>=1.7.10 <1.9` currently means the first two.
 
 Most jars list one version. List two only when the code really runs on both:
 [Several Minecraft versions in one jar](multi-version.md).
@@ -152,7 +153,7 @@ The lowest Java feature version the mod needs, as a number. Lich runs on Java 25
 
 ## Versions and version ranges
 
-Mod versions and Lich's own version are dotted numbers: `1`, `1.2`, `1.2.3`, `0.3.1`.
+Mod versions and Lich's own version are dotted numbers: `1`, `1.2`, `1.2.3`, `0.4.0`.
 
 - Missing parts count as `0`: `1.2` equals `1.2.0`.
 - **Anything after the first `-` or `+` is kept for display and ignored for comparison.** `1.0.0-beta.2` and `1.0.0`
@@ -177,7 +178,7 @@ There is no caret or tilde syntax. Pick bounds explicitly.
 Lich looks for mods in:
 
 1. `<game dir>/mods/*.jar`
-2. `<game dir>/mods/<minecraft version>/*.jar` (for example `mods/1.8.9`, where Forge 1.8.9 also looks)
+2. `<game dir>/mods/<minecraft version>/*.jar` (for example `mods/1.8.9`, where Forge 1.8.9 and 1.12.2 also look)
 3. whatever `-Dlich.devMods=<path>[;<path>...]` lists: jars or directories, separated by the platform's path
    separator. This is for running a mod from its build output without touching a mods folder
 
@@ -205,8 +206,8 @@ When any mod fails to resolve, the launch stops before the game window opens, wi
 ## Reading it back at run time
 
 ```java
-Lich.version();            // "0.3.1", or "dev" for a development build
-Lich.minecraftVersion();   // "1.7.10" or "1.8.9"
+Lich.version();            // "0.4.0", or "dev" for a development build
+Lich.minecraftVersion();   // "1.7.10", "1.8.9" or "1.12.2"
 Lich.isForgePresent();
 Lich.mods();               // List<ModInfo>, in load order
 Lich.mod("othermod");      // Optional<ModInfo>

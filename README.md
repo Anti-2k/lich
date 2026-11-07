@@ -1,6 +1,6 @@
 # Lich
 
-**Run Minecraft 1.7.10 and 1.8.9 on Java 25, with your Forge mods.**
+**Run Minecraft 1.7.10, 1.8.9 and 1.12.2 on Java 25, with your Forge mods.**
 
 Lich is a client-side runtime and mod loader for legacy Minecraft. It starts the game on a modern JVM and
 patches the game, Forge and mod bytecode at load time so that unmodified Java 8 Forge mods keep working: no
@@ -33,7 +33,7 @@ what the game needs to run on Java 25.
 |---|---|---|---|
 | 1.8.9 | 11.15.1.2318 (or no Forge) | Java 25 | ✅ singleplayer, public servers, modpacks |
 | 1.7.10 | 10.13.4.1614 (or no Forge) | Java 25 | ✅ singleplayer, public servers, modpacks |
-| 1.12.2 | — | — | planned |
+| 1.12.2 | 14.23.5.2859 (recommended), 14.23.5.2860 or 14.23.5.2864 (latest), or no Forge | Java 25 | ✅ singleplayer, modpacks, servers (tested on a local one; public servers not played yet) |
 
 | Java | Status |
 |---|---|
@@ -62,7 +62,8 @@ what the game needs to run on Java 25.
 
 Modpacks that pass Lich's harness (boot, mod list, server join, world tour, save and reload) include
 GT New Horizons, FTB Infinity Evolved, FTB SkyFactory 2.5, Blightfall, Tekxit 2, The Lost Era, Resonant Rise 3
-(1.7.10), SkyBlock Enhanced, the 1.8 PvP Pack, BedWars+ and SolitaryCraft VanillaPlus (1.8.9). The full list,
+(1.7.10), SkyBlock Enhanced, the 1.8 PvP Pack, BedWars+ and SolitaryCraft VanillaPlus (1.8.9), SevTech: Ages, MC Eternal,
+Divine Journey 2, The 1.12.2 Pack, Roguelike Adventures and Dungeons and Compact Claustrophobia (1.12.2). The full list,
 and what each one turned up, is in [DOCS.md §7](DOCS.md#7-testing).
 
 ## Installing
@@ -71,14 +72,15 @@ Lich installs into [Prism Launcher](https://prismlauncher.org/) (other launchers
 
 1. Install Java 25 or newer, e.g. [Temurin](https://adoptium.net/).
 2. Close Prism, then open `lich-installer-<version>.jar` (double-click it, or `java -jar lich-installer-<version>.jar`).
-3. Pick **New instance** (Minecraft 1.8.9 or 1.7.10, with or without Forge), or **Existing instance** to add Lich
+3. Pick **New instance** (Minecraft 1.8.9, 1.12.2 or 1.7.10, with or without Forge), or **Existing instance** to add Lich
    to one you already have. Then press **Install**.
 4. Start Prism and launch the instance. On the first launch Prism downloads Minecraft, Forge and Lich's
    libraries.
 
 The installer:
-- installs the Forge build Lich supports (`11.15.1.2318` for 1.8.9, `10.13.4.1614` for 1.7.10). If an
-  existing instance has another Forge build, it asks before switching it.
+- installs the Forge build Lich supports (`11.15.1.2318` for 1.8.9, `10.13.4.1614` for 1.7.10, `14.23.5.2859` for
+  1.12.2). An existing 1.12.2 instance can also keep `14.23.5.2860` or `14.23.5.2864`, the latest build. If an instance has any other
+  Forge build, it asks before switching it.
 - sets the instance to Java 25 and turns off Prism's Java compatibility check.
 - won't install into instances with Fabric, Quilt or Prism's LWJGL 3 component.
 - keeps a copy of the instance's original `mmc-pack.json` and `instance.cfg`, saved as `*.before-lich`.
@@ -125,8 +127,8 @@ The full design, every Java 25 breakage and its fix, the Lich mod format and the
 
 ## Project status
 
-Current release: **0.3.1** (first release: 0.3.0). Running Forge and its mods on Java 25 works and is tested
-with modpacks; Lich mods v0 work, one jar can target both 1.7.10 and 1.8.9, and there's a Prism installer. Mod developer docs are in [docs/modding](docs/modding/README.md). Still to come: Linux and macOS testing, other
+Current release: **0.4.0**, which adds Minecraft 1.12.2 (first release: 0.3.0). Running Forge and its mods on Java 25
+works and is tested with modpacks on all three versions; Lich mods v0 work, one jar can target 1.7.10, 1.8.9 and 1.12.2, and there's a Prism installer. Mod developer docs are in [docs/modding](docs/modding/README.md). Still to come: Linux and macOS testing, other
 launchers, and publishing the API and Gradle plugin so a mod can live outside this repository. See the
 [roadmap](DOCS.md#8-roadmap).
 

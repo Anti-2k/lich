@@ -34,6 +34,7 @@ record Options(
               --extra-cp <path>       extra classpath entry, put first, repeatable
               --skip-assets           only fetch the asset index, not the objects (no sounds)
               --dry-run               resolve and download everything, print the command, don't launch
+            Environment: DEVLAUNCH_ACCESS_TOKEN stands in for the access token (default 0), to test that logs stay clean.
             """;
 
     static Options parse(String[] args) {

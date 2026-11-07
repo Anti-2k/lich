@@ -3,27 +3,75 @@
   "id": "lichmulti",
   "version": "0.1.0",
   "name": "Lich multi-version test mod",
-  "description": "One jar for 1.7.10 and 1.8.9: shared code, and a Mixin, access widener and entrypoint per version.",
-  "authors": ["Lich"],
-  "minecraft": ["1.7.10", "1.8.9"],
+  "description": "One jar for 1.7.10, 1.8.9 and 1.12.2: shared code, and a Mixin, access widener and entrypoint per version.",
+  "authors": [
+    "Lich"
+  ],
+  "minecraft": [
+    "1.7.10",
+    "1.8.9",
+    "1.12.2"
+  ],
   "depends": {
     "lich": ">=0.1",
     "forge": "optional"
   },
   "entrypoints": {
-    "client": ["dev.lich.multimod.MultiMod"]
+    "client": [
+      "dev.lich.multimod.MultiMod"
+    ]
   },
   "javaVersion": 25,
   "versions": {
     "1.7.10": {
-      "entrypoints": {"client": ["dev.lich.multimod.v1_7_10.Client"]},
-      "mixins": ["mixins.lichmulti.1_7_10.json"],
+      "entrypoints": {
+        "client": [
+          "dev.lich.multimod.v1_7_10.Client"
+        ]
+      },
+      "mixins": [
+        "mixins.lichmulti.1_7_10.json"
+      ],
       "accessWidener": "lichmulti.1_7_10.aw"
     },
     "1.8.9": {
-      "entrypoints": {"client": ["dev.lich.multimod.v1_8_9.Client"]},
-      "mixins": ["mixins.lichmulti.1_8_9.json"],
+      "entrypoints": {
+        "client": [
+          "dev.lich.multimod.v1_8_9.Client"
+        ]
+      },
+      "mixins": [
+        "mixins.lichmulti.1_8_9.json"
+      ],
       "accessWidener": "lichmulti.1_8_9.aw"
+    },
+    "1.12.2": {
+      "entrypoints": {
+        "client": [
+          "dev.lich.multimod.v1_12_2.Client"
+        ]
+      },
+      "hooks": [
+        "client.tick",
+        "render.frame",
+        "render.hud",
+        "render.world",
+        "render.entity",
+        "render.blockOutline",
+        "render.fog",
+        "render.fov",
+        "render.tooltip",
+        "item.tooltip",
+        "screen",
+        "input.mouse",
+        "chat.receive",
+        "sound.play",
+        "player.attack"
+      ],
+      "mixins": [
+        "mixins.lichmulti.1_12_2.json"
+      ],
+      "accessWidener": "lichmulti.1_12_2.aw"
     }
   }
 }

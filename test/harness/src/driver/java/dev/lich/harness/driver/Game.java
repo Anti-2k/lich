@@ -6,6 +6,7 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.lang.reflect.Proxy;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -14,9 +15,12 @@ import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Queue;
 import java.util.Set;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
+import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
@@ -25,11 +29,17 @@ import java.util.concurrent.TimeoutException;
  * the game by LaunchClassLoader. The names used here are the same in 1.7.10 and 1.8.9 (checked against MCP's tables
  * for both), apart from the few places that ask {@link #oneEight}. Anything that changes the game runs on the client
  * thread, through the game's own task queue, which it drains once per frame: so a task that has run means a frame
- * is being drawn after it.
+ * is being drawn after it. Starting and leaving a world run in the client tick instead, see {@link #duringTick}.
  */
 final class Game {
     /** How long a task may wait for the client thread before the game counts as hung. */
     private static final long TASK_TIMEOUT_SECONDS = 120;
+    /** The same for a task in a tick: starting a world's server keeps the client thread there until it's up. */
+    private static final long TICK_TASK_TIMEOUT_SECONDS = 300;
+
+    /** What {@link #duringTick} left for the next client tick. */
+    private final Queue<FutureTask<?>> tickTasks = new ConcurrentLinkedQueue<>();
+    private boolean listeningToTicks;
 
     private final ClassLoader loader;
     private final Object minecraft;
@@ -197,7 +207,25 @@ final class Game {
         if (factory == null) {
             return false;
         }
-        Class<?> screen = (Class<?>) factory.getClass().getMethod("mainConfigGuiClass").invoke(factory);
+        Class<?> guiScreen = type("net.minecraft.client.gui.GuiScreen");
+        Class<?> factoryType = type(fml + "client.IModGuiFactory");
+        Method hasConfigGui = null;
+        try {
+            hasConfigGui = factoryType.getMethod("hasConfigGui"); // 1.12: the factory makes the screen itself
+        } catch (NoSuchMethodException upTo189) {
+            // Up to 1.8.9 it names the screen's class.
+        }
+        if (hasConfigGui != null) {
+            if (!(Boolean) hasConfigGui.invoke(factory)) {
+                return false;
+            }
+            final Method create = factoryType.getMethod("createConfigGui", guiScreen);
+            final Method display = method(minecraft.getClass(), "func_147108_a", guiScreen);
+            final Object factoryForScreen = factory;
+            onClient(() -> display.invoke(minecraft, create.invoke(factoryForScreen, parent)));
+            return true;
+        }
+        Class<?> screen = (Class<?>) factoryType.getMethod("mainConfigGuiClass").invoke(factory);
         if (screen == null) {
             return false;
         }
@@ -238,6 +266,42 @@ final class Game {
 
     // ---- Singleplayer
 
+    /**
+     * Makes a world the way a player does: the Create World screen, left at what the pack and its mods preset (the
+     * world type and its customization: DefaultWorldGenerator, RTG's "select by default", ...), then its Create
+     * button. Only what the scenario needs is set: the name, a seed if the screen has none (so both runs get the
+     * same world), and creative mode with cheats (its inventory steps). Returns the save folder.
+     */
+    String createWorldOnScreen(final String name, final long seed) throws Exception {
+        Class<?> guiScreen = type("net.minecraft.client.gui.GuiScreen");
+        Object parent = get(minecraft, "field_71462_r"); // currentScreen
+        final Object screen = displayNew(type("net.minecraft.client.gui.GuiCreateWorld").getConstructor(guiScreen), parent);
+        frames(10); // initGui has run, and the mods' hooks on it
+        final String[] folder = new String[1];
+        duringTick(() -> {
+            Object nameField = get(screen, "field_146333_g");
+            method(nameField.getClass(), "func_146180_a", String.class).invoke(nameField, name); // setText
+            Object seedField = get(screen, "field_146335_h");
+            String preset = (String) method(seedField.getClass(), "func_146179_b").invoke(seedField); // getText
+            if (preset.isEmpty()) {
+                method(seedField.getClass(), "func_146180_a", String.class).invoke(seedField, Long.toString(seed));
+            }
+            field(screen.getClass(), "field_146342_r").set(screen, "creative"); // gameMode
+            field(screen.getClass(), "field_146340_t").setBoolean(screen, true); // allowCheats
+            method(screen.getClass(), "func_146314_g").invoke(screen); // calcSaveDirName
+            folder[0] = (String) get(screen, "field_146336_i"); // saveDirName
+            Class<?> buttonClass = type("net.minecraft.client.gui.GuiButton");
+            for (Object button : (List<?>) get(screen, "field_146292_n")) { // buttonList
+                if ((Integer) get(button, "field_146127_k") == 0) { // the Create New World button
+                    method(screen.getClass(), "func_146284_a", buttonClass).invoke(screen, button); // actionPerformed
+                    return;
+                }
+            }
+            throw new IllegalStateException("No Create New World button on " + name(screen));
+        });
+        return folder[0];
+    }
+
     /** Creates a world in creative with cheats on, and starts its integrated server. */
     void createWorld(String folder, String name, long seed, String worldTypeName) throws Exception {
         Class<?> worldType = type("net.minecraft.world.WorldType");
@@ -261,7 +325,7 @@ final class Game {
     private void launch(final String folder, final String name, final Object settings) throws Exception {
         final Method launch = method(minecraft.getClass(), "func_71371_a", // launchIntegratedServer
                 String.class, String.class, type("net.minecraft.world.WorldSettings"));
-        onClient(() -> launch.invoke(minecraft, folder, name, settings));
+        duringTick(() -> launch.invoke(minecraft, folder, name, settings));
     }
 
     /** Whether the player is in a world that the integrated server is still running. */
@@ -284,7 +348,8 @@ final class Game {
     /** Lets every player use commands, as opening the world to LAN with cheats on does: a pack's own map may not. */
     void allowCommands() throws Exception {
         Object server = server();
-        Object players = method(server.getClass(), "func_71203_ab").invoke(server); // getConfigurationManager
+        // getConfigurationManager, getPlayerList in 1.12
+        Object players = methodOf(server.getClass(), new String[]{"func_71203_ab", "func_184103_al"}).invoke(server);
         method(players.getClass(), "func_72387_b", boolean.class).invoke(players, true); // setCommandsAllowedForAll
     }
 
@@ -318,7 +383,7 @@ final class Game {
         final Class<?> worldClient = type("net.minecraft.client.multiplayer.WorldClient");
         final Class<?> guiScreen = type("net.minecraft.client.gui.GuiScreen");
         final Class<?> mainMenu = type("net.minecraft.client.gui.GuiMainMenu");
-        onClient(() -> {
+        duringTick(() -> {
             Object world = get(minecraft, "field_71441_e");
             if (world != null) {
                 method(world.getClass(), "func_72882_A").invoke(world); // sendQuittingDisconnectingPacket
@@ -340,7 +405,7 @@ final class Game {
         if (overworld == null) {
             return -1;
         }
-        Object chunks = get(overworld, "field_73059_b"); // theChunkProviderServer
+        Object chunks = serverChunkProvider(overworld);
         return (Integer) method(chunks.getClass(), "func_73152_e").invoke(chunks); // getLoadedChunkCount
     }
 
@@ -359,9 +424,10 @@ final class Game {
         double[] at = playerXZ();
         int cx = (int) Math.floor(at[0]) >> 4;
         int cz = (int) Math.floor(at[1]) >> 4;
-        Object server = get(overworld, "field_73059_b"); // theChunkProviderServer
+        Object server = serverChunkProvider(overworld);
         Method exists = method(server.getClass(), "func_73149_a", int.class, int.class); // chunkExists
-        Method provide = method(server.getClass(), "func_73154_d", int.class, int.class); // provideChunk
+        String[] provideChunk = {"func_73154_d", "func_186025_d"}; // provideChunk; 1.12 renamed it
+        Method provide = methodOf(server.getClass(), provideChunk, int.class, int.class);
         int missing = 0;
         for (int x = cx - radius; x <= cx + radius; x++) {
             for (int z = cz - radius; z <= cz + radius; z++) {
@@ -372,7 +438,7 @@ final class Game {
             }
         }
         Object client = method(world.getClass(), "func_72863_F").invoke(world); // getChunkProvider
-        Object own = method(client.getClass(), "func_73154_d", int.class, int.class).invoke(client, cx, cz);
+        Object own = methodOf(client.getClass(), provideChunk, int.class, int.class).invoke(client, cx, cz);
         if ((Boolean) method(own.getClass(), "func_76621_g").invoke(own)) { // isEmpty: the client's blank chunk
             missing++;
         }
@@ -386,7 +452,12 @@ final class Game {
             return -1;
         }
         Object chunks = method(world.getClass(), "func_72863_F").invoke(world); // getChunkProvider
-        return (Integer) method(chunks.getClass(), "func_73152_e").invoke(chunks); // getLoadedChunkCount
+        try {
+            return (Integer) method(chunks.getClass(), "func_73152_e").invoke(chunks); // getLoadedChunkCount
+        } catch (NoSuchMethodException in112) {
+            // 1.12's client provider has only the map: loadedChunks.
+            return ((java.util.Map<?, ?>) get(chunks, "field_73236_b")).size();
+        }
     }
 
     /** The integrated server's overworld; null without one, or while it hasn't loaded its worlds yet. */
@@ -535,7 +606,73 @@ final class Game {
      * the game throws from a call the task made is a {@link StepFailed}; anything else is the driver's own failure.
      */
     void onClient(final Task task) throws Exception {
-        Runnable runnable = () -> {
+        Future<?> future = (Future<?>) method(minecraft.getClass(), "func_152344_a", Runnable.class)
+                .invoke(minecraft, runnable(task));
+        await(future, TASK_TIMEOUT_SECONDS);
+    }
+
+    /**
+     * Runs {@code task} on the client thread at the start of its next tick and waits for it: for what waits on the
+     * world's server or the network (starting a world, leaving one), as a click on a real button does from the same
+     * tick. {@link #onClient} can't: the game loop runs queued tasks holding the queue's lock, and another thread that
+     * queues a task of its own blocks on it. Thermal Expansion does from the ID remap at server start, so the client
+     * would wait for the server, and the server for the client, forever.
+     */
+    void duringTick(final Task task) throws Exception {
+        if (fml == null) {
+            onClient(task);
+            return;
+        }
+        listenToTicks();
+        FutureTask<Object> future = new FutureTask<>(runnable(task), null);
+        tickTasks.add(future);
+        await(future, TICK_TASK_TIMEOUT_SECONDS);
+    }
+
+    /**
+     * Puts a listener first on FML's client tick event. Through the listener list, not {@code EventBus.register}: that
+     * wants an annotated method, and the annotation's package differs per version.
+     */
+    private void listenToTicks() throws Exception {
+        if (listeningToTicks) {
+            return;
+        }
+        final Class<?> listenerType = type(fml + "common.eventhandler.IEventListener");
+        Class<?> eventType = type(fml + "common.gameevent.TickEvent$ClientTickEvent");
+        Class<?> phaseType = type(fml + "common.gameevent.TickEvent$Phase");
+        final Object start = enumConstant(phaseType, "START");
+        final Field phase = eventType.getField("phase");
+        Object listener = Proxy.newProxyInstance(loader, new Class<?>[]{listenerType}, (proxy, called, args) -> {
+            if (called.getDeclaringClass() == Object.class) { // The bus's crash report and its lists ask these.
+                switch (called.getName()) {
+                    case "equals":
+                        return proxy == args[0];
+                    case "hashCode":
+                        return System.identityHashCode(proxy);
+                    default:
+                        return "Lich harness driver";
+                }
+            }
+            if (phase.get(args[0]) == start) {
+                for (FutureTask<?> task = tickTasks.poll(); task != null; task = tickTasks.poll()) {
+                    task.run();
+                }
+            }
+            return null;
+        });
+        Class<?> handler = type(fml + "common.FMLCommonHandler");
+        Object bus = handler.getMethod("bus").invoke(handler.getMethod("instance").invoke(null));
+        int busId = field(bus.getClass(), "busID").getInt(bus);
+        Object event = eventType.getConstructor(phaseType).newInstance(start);
+        Object listeners = eventType.getMethod("getListenerList").invoke(event);
+        Class<?> priority = type(fml + "common.eventhandler.EventPriority");
+        listeners.getClass().getMethod("register", int.class, priority, listenerType)
+                .invoke(listeners, busId, enumConstant(priority, "HIGHEST"), listener);
+        listeningToTicks = true;
+    }
+
+    private static Runnable runnable(final Task task) {
+        return () -> {
             try {
                 task.run();
             } catch (InvocationTargetException e) {
@@ -544,9 +681,11 @@ final class Game {
                 throw new TaskFailed(e, false);
             }
         };
-        Future<?> future = (Future<?>) method(minecraft.getClass(), "func_152344_a", Runnable.class).invoke(minecraft, runnable);
+    }
+
+    private static void await(Future<?> future, long seconds) throws Exception {
         try {
-            future.get(TASK_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            future.get(seconds, TimeUnit.SECONDS);
         } catch (ExecutionException e) {
             if (!(e.getCause() instanceof TaskFailed)) {
                 throw new StepFailed("The game failed on the client thread: " + e.getCause(), e.getCause());
@@ -557,7 +696,7 @@ final class Game {
             }
             throw new IllegalStateException("The driver failed on the client thread: " + failed.getCause(), failed.getCause());
         } catch (TimeoutException e) {
-            throw new StepFailed("The client thread ran no task for " + TASK_TIMEOUT_SECONDS + " s");
+            throw new StepFailed("The client thread didn't finish a task in " + seconds + " s");
         }
     }
 
@@ -607,6 +746,30 @@ final class Game {
             }
         }
         throw new NoSuchFieldException(type.getName() + "." + name);
+    }
+
+    /** The first of {@code names} that {@code type} has: a member that 1.12 renamed has its 1.12 name second. */
+    static Method methodOf(Class<?> type, String[] names, Class<?>... parameters) throws NoSuchMethodException {
+        NoSuchMethodException first = null;
+        for (String name : names) {
+            try {
+                return method(type, name, parameters);
+            } catch (NoSuchMethodException e) {
+                if (first == null) {
+                    first = e;
+                }
+            }
+        }
+        throw first;
+    }
+
+    /** The integrated server's chunk provider of a world: a field up to 1.8.9, {@code getChunkProvider()} in 1.12. */
+    static Object serverChunkProvider(Object world) throws Exception {
+        try {
+            return get(world, "field_73059_b"); // theChunkProviderServer
+        } catch (NoSuchFieldException e) {
+            return method(world.getClass(), "func_72863_F").invoke(world); // getChunkProvider
+        }
     }
 
     static Method method(Class<?> type, String name, Class<?>... parameters) throws NoSuchMethodException {

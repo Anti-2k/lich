@@ -5,7 +5,7 @@ Mixin code that is woven into the game only when a loaded mod asks for it. This 
 rule, and lists every event.
 
 Package `dev.lich.api.client` holds the events. Sources are in `api/` (version-neutral events),
-`versions/shared/api/` (events whose source is identical on 1.7.10 and 1.8.9, compiled against each) and
+`versions/shared/api/` (events whose source is identical on 1.7.10, 1.8.9 and 1.12.2, compiled against each; a few that carry types 1.12 renamed have their own copy in `versions/1.12.2/api`) and
 `versions/<mc>/api/` (events that differ per version).
 
 ## The bus
@@ -83,7 +83,7 @@ both profiles because Forge's binpatches change some of the same methods.
 
 ## Reference
 
-Each section names the hook id to list, then the events. "1.7.10"/"1.8.9" notes call out differences. Everything
+Each section names the hook id to list, then the events. "1.7.10"/"1.8.9"/"1.12.2" notes call out differences. Everything
 else is the same on both.
 
 ### Lifecycle (no hook needed)
@@ -135,7 +135,7 @@ those bars.
 `HOTBAR`, `EXPERIENCE`, `HEALTHMOUNT`, `JUMPBAR`, `CHAT`, `PLAYER_LIST`, `DEBUG`, `TITLE`, `ACTION_BAR`. These are
 Forge's element types plus the title and the action bar.
 
-- `TITLE` (the big title and subtitle): 1.8.9 only. 1.7.10 has no titles.
+- `TITLE` (the big title and subtitle): 1.8.9 and 1.12.2. 1.7.10 has no titles.
 - `ACTION_BAR` (text above the hotbar): on 1.7.10 only the "Now playing" record text.
 - `DEBUG_TEXT`: both lists are mutable, and what is in them after the listeners ran is drawn, one line per entry. Gaps
   are empty entries on 1.8.9 and `null` entries on 1.7.10 (as Forge 1.7.10 does).
@@ -165,7 +165,7 @@ Around drawing a living entity (`RendererLivingEntity`). The payload `Living` is
 | `POST` | After a living entity was drawn (not after a cancelled one) |
 | `NAMETAG_POST` | After the entity's name tag was drawn, or would have been if it had one in view |
 
-On 1.7.10 `renderer()` returns the raw `RendererLivingEntity`; on 1.8.9 it is `RendererLivingEntity<?>`. Code
+On 1.7.10 `renderer()` returns the raw `RendererLivingEntity`; on 1.8.9 it is `RendererLivingEntity<?>`; on 1.12.2 it is `RenderLivingBase<?>`. Code
 that uses this event on both versions is built [per version](multi-version.md).
 
 ### `render.fog`: `FogEvents`

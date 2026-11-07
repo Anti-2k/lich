@@ -5,7 +5,7 @@ enum Profile {
     FORGE("forge", "Forge (Java 8)"),
     LICH("lich-forge", "Lich (Java 25)");
 
-    /** The devlaunch profile, {@code <id>-<mc>}, and the game directory's name. */
+    /** The devlaunch profile, {@code <id>-<mc>} or {@code <id>-<mc>-<forge build>}, and the game directory's name. */
     final String id;
     final String title;
 

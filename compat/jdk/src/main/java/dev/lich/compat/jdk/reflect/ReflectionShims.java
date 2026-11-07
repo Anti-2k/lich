@@ -2,6 +2,8 @@ package dev.lich.compat.jdk.reflect;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Redirect targets for the "clear {@code final} through {@code Field.modifiers}" hack. Java 12 hides
@@ -9,19 +11,29 @@ import java.lang.reflect.Modifier;
  * out a dummy field instead: reading and writing it through {@code getInt}/{@code setInt} (or {@code set})
  * reads and writes the target field's modifiers, and clearing {@code final} makes that field writable
  * ({@link UnfinalizedFields}). A {@code Field.set} or {@code Field.set<Primitive>} redirected here writes a
- * {@code static final} field anyway. The compat pass only redirects these calls in classes that contain the
- * string "modifiers".
+ * {@code static final} field anyway. The compat pass redirects {@code getDeclaredField} in every class, since
+ * mods look the field up through helpers that take its name as an argument (IC2's {@code ReflectionUtil}), and the
+ * writes only in classes that contain the string "modifiers".
  */
 public final class ReflectionShims {
     /** What old code gets for {@code Field.modifiers}; the redirects below never let a write land here. */
     @SuppressWarnings("unused")
     private static int modifiers;
 
+    /**
+     * What old code gets for {@code ClassLoader.packages}, which Java 12 hides too. NormalASM and its forks only read
+     * the names in it, to share their strings: with none, the game runs the same and that saving is gone.
+     */
+    @SuppressWarnings("unused")
+    private static final Map<String, Object> packages = new ConcurrentHashMap<>();
+
     private static final Field DUMMY_MODIFIERS;
+    private static final Field DUMMY_PACKAGES;
 
     static {
         try {
             DUMMY_MODIFIERS = ReflectionShims.class.getDeclaredField("modifiers");
+            DUMMY_PACKAGES = ReflectionShims.class.getDeclaredField("packages");
         } catch (NoSuchFieldException e) {
             throw new ExceptionInInitializerError(e);
         }
@@ -33,6 +45,9 @@ public final class ReflectionShims {
     public static Field getDeclaredField(Class<?> owner, String name) throws NoSuchFieldException {
         if (owner == Field.class && name.equals("modifiers")) {
             return DUMMY_MODIFIERS;
+        }
+        if (owner == ClassLoader.class && name.equals("packages")) {
+            return DUMMY_PACKAGES;
         }
         return owner.getDeclaredField(name);
     }

@@ -58,6 +58,36 @@ final class GameLauncher {
         return jar;
     }
 
+    /** The Forge profile a pack runs on: the one of the build it pins. */
+    Path forgeProfile(Pack pack) throws IOException {
+        String id = "forge" + versionSuffix(pack);
+        return versions().resolve(id).resolve(id + ".json");
+    }
+
+    private Path versions() {
+        return runDir.resolve("cache").resolve("versions");
+    }
+
+    /**
+     * What follows the profile id in a pack's version: {@code -<mc>-<build>} when its Minecraft version has a profile
+     * per Forge build, else {@code -<mc>}. A pack must never run on another build than the one its report names.
+     */
+    private String versionSuffix(Pack pack) throws IOException {
+        String perBuild = "-" + pack.mc() + "-" + pack.forge();
+        if (Files.isRegularFile(versions().resolve("forge" + perBuild).resolve("forge" + perBuild + ".json"))) {
+            return perBuild;
+        }
+        String shared = "-" + pack.mc();
+        Path json = versions().resolve("forge" + shared).resolve("forge" + shared + ".json");
+        if (!Files.isRegularFile(json)) {
+            throw new IOException("No " + json + "; run :installer:installDevProfiles first");
+        }
+        if (!Files.readString(json).contains(pack.forge())) {
+            throw new IOException(pack.id() + " pins Forge " + pack.forge() + ", which Lich has no profile for (" + json + ")");
+        }
+        return shared;
+    }
+
     Process start(Pack pack, Path template, Profile profile, Map<String, String> driverProperties) throws IOException {
         Path packDir = packDir(pack);
         Path gameDir = gameDir(pack, profile);
@@ -72,7 +102,7 @@ final class GameLauncher {
         options(gameDir.resolve("options.txt"));
 
         List<String> args = new ArrayList<>(List.of(
-                "--version", profile.id + "-" + pack.mc(), "--java", java(profile).toString(), "--run-dir", runDir.toString(),
+                "--version", profile.id + versionSuffix(pack), "--java", java(profile).toString(), "--run-dir", runDir.toString(),
                 "--game-dir", gameDir.toString(), "--username", PLAYER,
                 "--extra-cp", driverJar().toString(),
                 "--game-arg", "--tweakClass", "--game-arg", DRIVER,

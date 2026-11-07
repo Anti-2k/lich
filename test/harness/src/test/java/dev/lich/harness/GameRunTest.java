@@ -94,12 +94,12 @@ class GameRunTest {
 
     @Test
     void theSummarySaysWhatChangedSinceThePreviousRun() {
-        Pack pack = Pack.get("cubesoft");
+        Pack pack = Pack.get("compact-claustrophobia");
         Verdict pass = new Verdict(Verdict.Kind.PASS, "completed like Forge", List.of());
         Verdict fail = new Verdict(Verdict.Kind.FAIL, "Lich crashed", List.of());
         RunResult run = Runs.completed("lich-forge");
-        History.Entry wasFail = new History.Entry("t", "cubesoft", "a", "FAIL", "", 1, true);
-        History.Entry wasPass = new History.Entry("t", "cubesoft", "a", "PASS", "", 1, true);
+        History.Entry wasFail = new History.Entry("t", "compact-claustrophobia", "a", "FAIL", "", 1, true);
+        History.Entry wasPass = new History.Entry("t", "compact-claustrophobia", "a", "PASS", "", 1, true);
         assertEquals("first run", Summary.change(new Summary.Row(pack, pass, run, true, null, Path.of("r"))));
         assertEquals("**fixed**", Summary.change(new Summary.Row(pack, pass, run, true, wasFail, Path.of("r"))));
         assertEquals("**regressed**", Summary.change(new Summary.Row(pack, fail, run, true, wasPass, Path.of("r"))));
@@ -110,9 +110,9 @@ class GameRunTest {
     void theReportRendersBothRuns(@TempDir Path dir) throws IOException {
         RunResult forge = Runs.completed("forge");
         RunResult lich = Runs.failed("lich-forge", "tour", RunResult.Ending.CRASHED, "crash.txt: Ticking | it");
-        Path report = Report.write(dir.resolve("report.md"), Pack.get("cubesoft"), 19, Verdict.of(lich, forge), lich, forge, true);
+        Path report = Report.write(dir.resolve("report.md"), Pack.get("compact-claustrophobia"), 19, Verdict.of(lich, forge), lich, forge, true);
         String text = Files.readString(report);
-        assertTrue(text.startsWith("# CubeSoft Pack 1.0.0: ❌ FAIL"), text);
+        assertTrue(text.startsWith("# Compact Claustrophobia 1.3.5.2: ❌ FAIL"), text);
         assertTrue(text.contains("| tour | ✓ 10 s | ✗ 10 s: crash.txt: Ticking / it |"), text);
         assertTrue(text.contains("| reload | ✓ 10 s | · |"), text);
     }

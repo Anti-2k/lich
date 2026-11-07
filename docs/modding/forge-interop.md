@@ -5,7 +5,7 @@ Lich runs the game in two profiles, and a Lich mod must work in both:
 | Profile | What runs |
 |---|---|
 | plain (`lich`) | Vanilla Minecraft on Java 25. Lich remaps the game from its obfuscated names to SRG itself |
-| Forge (`lich-forge`) | Real Forge (11.15.1.2318 for 1.8.9, 10.13.4.1614 for 1.7.10), patched at load time, and Forge mods |
+| Forge (`lich-forge`) | Real Forge (11.15.1.2318 for 1.8.9, 10.13.4.1614 for 1.7.10, 14.23.5.2859, 14.23.5.2860 or 14.23.5.2864 for 1.12.2), patched at load time, and Forge mods |
 
 In both, the game runs in **SRG names**, and your mod is reobfuscated to SRG, so **one jar works in both**. You do not
 build twice.

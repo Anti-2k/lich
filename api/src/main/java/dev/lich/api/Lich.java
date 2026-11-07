@@ -16,7 +16,7 @@ public final class Lich {
         return LichLoader.lichVersion() == null ? "dev" : LichLoader.lichVersion().toString();
     }
 
-    /** {@code "1.7.10"} or {@code "1.8.9"}. */
+    /** {@code "1.7.10"}, {@code "1.8.9"} or {@code "1.12.2"}. */
     public static String minecraftVersion() {
         return LichLoader.minecraftVersion();
     }

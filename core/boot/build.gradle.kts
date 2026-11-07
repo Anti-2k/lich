@@ -11,11 +11,13 @@ dependencies {
     implementation(project(":loader"))
     implementation(project(":v1_7_10-compat-forge"))
     implementation(project(":v1_8_9-compat-forge"))
+    implementation(project(":v1_12_2-compat-forge"))
     implementation(project(":compat-jdk"))
     implementation(project(":compat-asm"))
     implementation(project(":compat-lwjgl2"))
     implementation(project(":v1_7_10-compat-mc"))
     implementation(project(":v1_8_9-compat-mc"))
+    implementation(project(":v1_12_2-compat-mc"))
     // Provided by the game's own classpath at runtime.
     compileOnly(libs.log4j.api.legacy)
     compileOnly(libs.log4j.core.legacy)

@@ -36,7 +36,7 @@ final class InstallerWindow {
     private final JRadioButton newRadio = new JRadioButton("New instance", true);
     private final JRadioButton existingRadio = new JRadioButton("Existing instance");
     private final JTextField nameField = new JTextField(24);
-    private final JComboBox<String> mcCombo = new JComboBox<>(new String[]{"1.8.9", "1.7.10"});
+    private final JComboBox<String> mcCombo = new JComboBox<>(new String[]{"1.8.9", "1.12.2", "1.7.10"});
     private final JCheckBox forgeCheck = new JCheckBox();
     private final JComboBox<Entry> instanceCombo = new JComboBox<>();
     private final JTextField javaField = new JTextField(36);

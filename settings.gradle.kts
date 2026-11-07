@@ -50,9 +50,9 @@ module("compat-lwjgl2", "compat/lwjgl2")
 
 module("api", "api")
 
-// Fixes that are identical in 1.7.10 and 1.8.9; each version module registers the ones it needs.
+// Fixes that are identical in several versions; each version module registers the ones it needs.
 module("shared-compat-mc", "versions/shared/compat-mc")
-for (mc in listOf("1.7.10", "1.8.9")) {
+for (mc in listOf("1.7.10", "1.8.9", "1.12.2")) {
     val prefix = "v" + mc.replace('.', '_')
     for (part in listOf("compat-mc", "compat-forge", "api")) {
         module("$prefix-$part", "versions/$mc/$part")

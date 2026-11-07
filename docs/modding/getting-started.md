@@ -61,7 +61,7 @@ dependencies {
 `compileOnly`, because at run time the API is provided by Lich itself (it is installed next to the game, in the same
 class loader as the game and your mod). Never bundle it.
 
-For 1.7.10 use `minecraft("1.7.10")` and `:v1_7_10-api`. For both versions in one jar, see
+For 1.7.10 use `minecraft("1.7.10")` and `:v1_7_10-api`; for 1.12.2 `minecraft("1.12.2")` and `:v1_12_2-api`. For both versions in one jar, see
 [Several Minecraft versions in one jar](multi-version.md).
 
 What `minecraft("1.8.9")` gives you:
@@ -180,7 +180,7 @@ In PowerShell, quote every `-P` argument (as above), or it splits them at the do
 | Profile | Meaning |
 |---|---|
 | `lich` | Lich, no Forge |
-| `lich-forge` | Lich with Forge (also `-Plich.mc=1.7.10`) |
+| `lich-forge` | Lich with Forge (also `-Plich.mc=1.7.10` and `-Plich.mc=1.12.2`; for 1.12.2 `-Plich.forge=14.23.5.2860` or `14.23.5.2864` picks that build instead of the recommended one) |
 
 Try your mod on both: it must work with and without Forge. For the full list of devlaunch options see
 [AGENTS.md](https://github.com/Anti-2k/lich/blob/main/AGENTS.md#running-the-game-devlaunch). Add `--jvm-arg -Dlich.dev.noMouseGrab=true` to the

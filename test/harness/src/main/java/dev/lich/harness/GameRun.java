@@ -5,9 +5,11 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -40,6 +42,7 @@ final class GameRun {
     private String progress = "";
     private String screen = "";
     private long launched;
+    private Instant gameStarted;
 
     GameRun(Pack pack, Profile profile, Scenario scenario, RunResult baseline, Path gameDir, Path java) {
         this.pack = pack;
@@ -53,6 +56,7 @@ final class GameRun {
     /** Follows {@code game}, started just now, to its end. */
     RunResult follow(Process game, DriverLink link, String lich, String key) throws IOException, InterruptedException {
         launched = System.nanoTime();
+        gameStarted = game.info().startInstant().orElse(Instant.now().minusSeconds(10));
         String startedAt = LocalDateTime.now().format(STARTED);
         // The boot step runs from the game's start, not from the driver's first event.
         current = "boot";
@@ -75,6 +79,9 @@ final class GameRun {
                         if (crash != null) {
                             ending = RunResult.Ending.CRASHED;
                             detail = crash;
+                        } else if (game.isAlive()) {
+                            // The driver may have given up on a hung game: what hangs is only visible now.
+                            detail += threadDump(game, gameDir.resolveSibling("stall-threads-" + profile.id + ".txt"));
                         }
                         break loop;
                     }
@@ -273,12 +280,71 @@ final class GameRun {
         return "";
     }
 
-    private static void stop(Process game) throws InterruptedException {
+    /**
+     * Stops the game and every process it started, including those that outlive it. Divine Journey 2's Crash Assistant
+     * opens a window as the game crashes and stays; Enigmatica's Cleanroom relauncher ran a whole second game.
+     */
+    private void stop(Process game) throws InterruptedException {
         if (game.isAlive()) {
             game.descendants().forEach(ProcessHandle::destroyForcibly);
             game.destroyForcibly();
         }
         game.waitFor();
+        for (ProcessHandle child : leftBehind(game.pid())) {
+            log("stopped process " + child.pid() + " the game left running: " + child.info().command().orElse("?"));
+            child.descendants().forEach(ProcessHandle::destroyForcibly);
+            child.destroyForcibly();
+        }
+    }
+
+    /**
+     * The Java processes still running that the game left behind: started after it, and running on its game folder or
+     * Lich's {@code run/cache} (the game's libraries). Java only finds a process's children while their parents live, and
+     * Crash Assistant starts through a helper that exits at once, so neither its descendants nor its parent id lead to
+     * it. Only one harness game runs at a time; the test server started before the game and runs a plain server.jar.
+     */
+    private List<ProcessHandle> leftBehind(long gamePid) {
+        if (!System.getProperty("os.name", "").startsWith("Windows")) {
+            return List.of();
+        }
+        try {
+            // Encoded: Java doesn't escape quotes inside a Windows command line argument, and PowerShell then fails quietly.
+            String script = "Get-CimInstance Win32_Process | Where-Object { ($_.Name -eq 'java.exe' -or $_.Name -eq 'javaw.exe')"
+                    + " -and $_.CommandLine -and ($_.CommandLine.Contains($env:LICH_GAME_DIR)"
+                    + " -or $_.CommandLine.Contains($env:LICH_CACHE)) } | ForEach-Object { $_.ProcessId }";
+            ProcessBuilder builder = new ProcessBuilder("powershell", "-NoProfile", "-NonInteractive", "-EncodedCommand",
+                    Base64.getEncoder().encodeToString(script.getBytes(StandardCharsets.UTF_16LE)))
+                    .redirectErrorStream(true);
+            builder.environment().put("LICH_GAME_DIR", gameDir.toAbsolutePath().toString());
+            builder.environment().put("LICH_CACHE", gameDir.toAbsolutePath().getParent().getParent().resolveSibling("cache").toString());
+            Process query = builder.start();
+            String out = new String(query.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+            if (!query.waitFor(60, TimeUnit.SECONDS)) {
+                query.destroyForcibly();
+                return List.of();
+            }
+            if (query.exitValue() != 0) {
+                log("couldn't look for processes the game left running: " + out.strip());
+                return List.of();
+            }
+            long harness = ProcessHandle.current().pid();
+            List<ProcessHandle> children = new ArrayList<>();
+            for (String line : out.split("\\R")) {
+                String pid = line.strip();
+                if (pid.matches("\\d+") && Long.parseLong(pid) != harness && Long.parseLong(pid) != gamePid) {
+                    ProcessHandle.of(Long.parseLong(pid))
+                            .filter(p -> p.info().startInstant().map(t -> !t.isBefore(gameStarted)).orElse(false))
+                            .ifPresent(children::add);
+                }
+            }
+            return children;
+        } catch (IOException e) {
+            log("couldn't look for processes the game left running: " + e.getMessage());
+            return List.of();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return List.of();
+        }
     }
 
     private static long seconds(long since) {

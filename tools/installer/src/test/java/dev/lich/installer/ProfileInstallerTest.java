@@ -13,6 +13,8 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ProfileInstallerTest {
     @Test
@@ -49,5 +51,40 @@ class ProfileInstallerTest {
     void flagFilesSkipCommentsAndBlankLines(@TempDir Path dir) throws Exception {
         Path flags = Files.writeString(dir.resolve("jvm-flags.txt"), "# comment\n\n  --a=b  \n--c=d\n");
         assertEquals(List.of("--a=b", "--c=d"), ProfileInstaller.readFlags(flags));
+    }
+
+    @Test
+    void writesTheForgeProfileOfTheChosenBuildFor1122(@TempDir Path root, @TempDir Path build) throws Exception {
+        Path jar = Files.write(build.resolve("lich-boot-1.0.jar"), new byte[]{1});
+        Map<String, Path> libraries = Map.of("dev.lich:lich-boot:1.0", jar);
+
+        ProfileInstaller.install("1.12.2", root, List.of(), libraries);
+        String recommended = Files.readString(root.resolve("versions/forge-1.12.2/forge-1.12.2.json"));
+        assertTrue(recommended.contains("net.minecraftforge:forge:1.12.2-14.23.5.2859:universal"), "the recommended build by default");
+        assertFalse(recommended.contains("${forge}"));
+
+        ProfileInstaller.install("1.12.2", root, List.of(), libraries, "14.23.5.2860");
+        String middle = Files.readString(root.resolve("versions/forge-1.12.2/forge-1.12.2.json"));
+        assertTrue(middle.contains("net.minecraftforge:forge:1.12.2-14.23.5.2860:universal"), "the build most Modrinth packs pin");
+
+        ProfileInstaller.install("1.12.2", root, List.of(), libraries, "14.23.5.2864");
+        String latest = Files.readString(root.resolve("versions/forge-1.12.2/forge-1.12.2.json"));
+        assertTrue(latest.contains("net.minecraftforge:forge:1.12.2-14.23.5.2864:universal"), "the latest build when asked");
+        JsonObject lichForge = JsonParser.parseString(Files.readString(root.resolve("versions/lich-forge-1.12.2/lich-forge-1.12.2.json")))
+                .getAsJsonObject();
+        assertEquals("forge-1.12.2", lichForge.get("inheritsFrom").getAsString());
+
+        // Every build also has its own profiles, whichever one forge-1.12.2 points at.
+        for (String each : List.of("14.23.5.2859", "14.23.5.2860", "14.23.5.2864")) {
+            String id = "forge-1.12.2-" + each;
+            JsonObject perBuild = JsonParser.parseString(Files.readString(root.resolve("versions/" + id + "/" + id + ".json"))).getAsJsonObject();
+            assertEquals(id, perBuild.get("id").getAsString());
+            assertTrue(perBuild.toString().contains("net.minecraftforge:forge:1.12.2-" + each + ":universal"));
+            JsonObject lichOnTop = JsonParser.parseString(Files.readString(root.resolve("versions/lich-" + id + "/lich-" + id + ".json"))).getAsJsonObject();
+            assertEquals(id, lichOnTop.get("inheritsFrom").getAsString());
+        }
+
+        assertThrows(IllegalArgumentException.class,
+                () -> ProfileInstaller.install("1.12.2", root, List.of(), libraries, "14.23.5.2838"));
     }
 }

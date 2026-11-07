@@ -135,8 +135,24 @@ final class Script {
             }
         }
         checkErrorScreen();
+        if (screen != null && !isMainMenu(screen)) {
+            // A pack's own first screen (GroovyScript's warning) is closed as its Continue button closes it, to the main
+            // menu, where a player always is before playing. Universal Tweaks' load sound counts on that: until it has
+            // seen the main menu, it crashes on the first screen change in a world (Divine Journey 2).
+            channel.send("note", "boot", Channel.field("answered", screen.getClass().getSimpleName()), "closed to the main menu");
+            game.display(null);
+            game.frames(2);
+            screen = game.screen();
+            checkErrorScreen();
+        }
         game.setFpsLimit(MENU_FPS);
         return Channel.field("screen", Game.name(screen)) + " forge=" + (game.fml != null) + " " + game.stats();
+    }
+
+    /** The game's main menu, or CustomMainMenu's, which takes its place. */
+    private boolean isMainMenu(Object screen) throws ClassNotFoundException {
+        return game.type("net.minecraft.client.gui.GuiMainMenu").isInstance(screen)
+                || screen.getClass().getName().equals("lumien.custommainmenu.gui.GuiCustom");
     }
 
     /**
@@ -244,9 +260,13 @@ final class Script {
         if (save == null) {
             folder = "harness";
             long seed = Long.getLong("lich.harness.seed", 1L);
-            String type = System.getProperty("lich.harness.worldType", "default");
+            String type = System.getProperty("lich.harness.worldType", "screen");
             channel.send("note", "world", Channel.field("seed", seed) + " " + Channel.field("type", type), null);
-            game.createWorld(folder, "Harness", seed, type);
+            if (type.equals("screen")) {
+                folder = game.createWorldOnScreen("Harness", seed);
+            } else {
+                game.createWorld(folder, "Harness", seed, type);
+            }
         } else {
             folder = save;
             channel.send("note", "world", Channel.field("save", save), null);

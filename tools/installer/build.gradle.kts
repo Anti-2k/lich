@@ -30,6 +30,7 @@ dependencies {
     add("lich", project(":api"))
     add("lich", project(":v1_7_10-compat-forge"))
     add("lich", project(":v1_8_9-compat-forge"))
+    add("lich", project(":v1_12_2-compat-forge"))
     // Lich mods' Mixin. The system class loader holds both back unless Lich mods are installed (DOCS.md §2.4).
     add("lich", libs.mixin)
     add("lich", libs.mixinextras)
@@ -38,6 +39,7 @@ dependencies {
     add("lich", project(":shared-compat-mc"))
     add("lich", project(":v1_7_10-compat-mc"))
     add("lich", project(":v1_8_9-compat-mc"))
+    add("lich", project(":v1_12_2-compat-mc"))
     add("lich", libs.asm)
     add("lich", libs.asm.tree)
     add("lich", libs.asm.analysis)
@@ -66,7 +68,7 @@ dependencies {
 // §3.1). The mappings come from Forge's Maven onto the user's machine, like the game itself; never shipped.
 class VersionJars(val runtime: Configuration, val mappings: Configuration)
 
-val versionJars = listOf("1.7.10", "1.8.9").associateWith { mc ->
+val versionJars = listOf("1.7.10", "1.8.9", "1.12.2").associateWith { mc ->
     val suffix = mc.replace('.', '_')
     val api = configurations.dependencyScope("lichApi_$suffix")
     val mcp = configurations.dependencyScope("mcpMappings_$suffix")
@@ -92,9 +94,13 @@ val versionJars = listOf("1.7.10", "1.8.9").associateWith { mc ->
 
 /** The -Plich.mc version (default 1.8.9). */
 val selectedMc = providers.gradleProperty("lich.mc").getOrElse("1.8.9")
+/** The -Plich.forge build for the dev profiles' Forge (default: the one the installer adds; 1.12.2 has three). */
+val selectedForge = providers.gradleProperty("lich.forge")
 
 /** Runs ProfileInstaller for [mcVersion] with the Lich jars, the JVM flags and [target] (--root or --prism-instance). */
 fun JavaExec.runInstaller(mcVersion: String, target: Provider<List<String>>) {
+    // -Plich.forge names a build of the -Plich.mc version's Forge; other versions use their default.
+    val forge = if (mcVersion == selectedMc) selectedForge else providers.provider<String> { null }
     val selected = versionJars[mcVersion] ?: throw GradleException("No Lich profile for Minecraft $mcVersion")
     val mappings: FileCollection = selected.mappings
     val flags = rootProject.layout.projectDirectory.file("core/boot/src/main/resources/dev/lich/boot/jvm-flags.txt").asFile
@@ -123,6 +129,7 @@ fun JavaExec.runInstaller(mcVersion: String, target: Provider<List<String>>) {
     mainClass = application.mainClass
     argumentProviders.add(CommandLineArgumentProvider {
         listOf("--mc", mcVersion, "--flags", flags.absolutePath) + target.get() +
+            (if (forge.isPresent) listOf("--forge", forge.get()) else listOf()) +
             libraries.get().flatMap { listOf("--library", it) } +
             listOf("--library", "de.oceanlabs.mcp:mcp:$mcVersion:srg@zip=${mappings.singleFile.absolutePath}")
     })

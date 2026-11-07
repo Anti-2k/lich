@@ -19,9 +19,17 @@ final class PrismInstance {
     static final String MINECRAFT = "net.minecraft";
     static final String FORGE = "net.minecraftforge";
     static final String LWJGL2 = "org.lwjgl";
-    /** The Forge build Lich supports per Minecraft version (DOCS.md §0). */
-    static final Map<String, String> FORGE_VERSIONS = Map.of("1.7.10", "10.13.4.1614", "1.8.9", "11.15.1.2318");
-    /** The LWJGL 2 component both versions' Minecraft asks Prism for; Lich replaces it with LWJGL 3 at launch. */
+    /**
+     * The Forge build Lich adds to an instance, per Minecraft version (DOCS.md §0): Forge's recommended one. 1.12.2
+     * has newer builds, which Lich supports too ({@link #FORGE_ALSO}).
+     */
+    static final Map<String, String> FORGE_VERSIONS = Map.of("1.7.10", "10.13.4.1614", "1.8.9", "11.15.1.2318",
+            "1.12.2", "14.23.5.2859");
+    /** Other Forge builds Lich supports, which an instance keeps as they are. */
+    static final Map<String, List<String>> FORGE_ALSO = Map.of("1.12.2", List.of("14.23.5.2860", "14.23.5.2864"));
+    /** The Minecraft versions Lich supports, oldest first. */
+    static final List<String> SUPPORTED = List.of("1.7.10", "1.8.9", "1.12.2");
+    /** The LWJGL 2 component every supported version's Minecraft asks Prism for; Lich replaces it with LWJGL 3 at launch. */
     static final String LWJGL2_VERSION = "2.9.4-nightly-20150209";
     /** Components Lich can't run with, and why. */
     private static final Map<String, String> INCOMPATIBLE = Map.of(
@@ -89,6 +97,11 @@ final class PrismInstance {
         return name == null || name.isEmpty() ? dir.getFileName().toString() : name;
     }
 
+    /** {@code 1.7.10, 1.8.9 and 1.12.2}, for messages. */
+    static String supportedText() {
+        return String.join(", ", SUPPORTED.subList(0, SUPPORTED.size() - 1)) + " and " + SUPPORTED.getLast();
+    }
+
     /** The {@code version} of component {@code uid}, or null when the instance doesn't have it. */
     String version(String uid) {
         JsonObject component = find(uid);
@@ -106,7 +119,7 @@ final class PrismInstance {
             return "it has no Minecraft component";
         }
         if (!FORGE_VERSIONS.containsKey(mc)) {
-            return "it's Minecraft " + mc + "; Lich supports " + String.join(" and ", FORGE_VERSIONS.keySet().stream().sorted().toList());
+            return "it's Minecraft " + mc + "; Lich supports " + supportedText();
         }
         for (JsonElement element : pack.getAsJsonArray("components")) {
             String uid = element.getAsJsonObject().get("uid").getAsString();
@@ -129,7 +142,13 @@ final class PrismInstance {
         if (current == null) {
             return wanted ? "add Forge " + expected : null;
         }
-        return current.equals(expected) ? null : "change Forge " + current + " to " + expected + ", the build Lich supports";
+        return supportsForge(minecraft(), current) ? null
+                : "change Forge " + current + " to " + expected + ", the build Lich supports";
+    }
+
+    /** Whether Lich supports Forge build {@code build} for Minecraft {@code mc}. */
+    static boolean supportsForge(String mc, String build) {
+        return build.equals(FORGE_VERSIONS.get(mc)) || FORGE_ALSO.getOrDefault(mc, List.of()).contains(build);
     }
 
     /** Applies {@link #forgeChange}: adds Forge right after Minecraft, or switches its build. */
@@ -149,7 +168,7 @@ final class PrismInstance {
                 }
             }
             pack.add("components", updated);
-        } else if (!expected.equals(forge.get("version").getAsString())) {
+        } else if (!supportsForge(minecraft(), forge.get("version").getAsString())) {
             forge.addProperty("version", expected);
             // Prism's cache of the old build's metadata; it refreshes it from the new version.
             forge.remove("cachedVersion");

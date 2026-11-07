@@ -49,13 +49,14 @@ tasks.processResources {
     from(driverJar) { into("dev/lich/harness") }
 }
 
-// ./gradlew :harness:fetchPack "-Plich.pack=lost-era"
+// ./gradlew :harness:fetchPack "-Plich.pack=rlcraft"
 //   Downloads the pinned pack and every mod it lists (hashes checked) into run/packs/<pack>/minecraft.
-// ./gradlew :harness:prismPack "-Plich.pack=lost-era"
+// ./gradlew :harness:prismPack "-Plich.pack=rlcraft"
 //   Creates the Prism instances <pack>-forge-<mc> (Java 8) and <pack>-lich-<mc> (Java 25) from it. Then add Lich to
 //   the second one: ./gradlew :installer:installPrism "-Plich.mc=<mc>" "-Plich.prismInstance=<its dir>".
-// ./gradlew :harness:runPack "-Plich.pack=<packs>" ["-Plich.baseline=auto|rerun|skip"] ["-Plich.until=<step>"]
-//         ["-Plich.hold=20"] ["-Plich.gallery=on|off"] ["-Plich.server=on|off"]
+// ./gradlew :harness:runPack "-Plich.pack=<packs>" ["-Plich.baseline=auto|rerun|skip|forge"] ["-Plich.until=<step>"]
+//         ["-Plich.skip=tour,inventory"] ["-Plich.hold=20"] ["-Plich.gallery=on|off"] ["-Plich.server=on|off"]
+//         ["-Plich.mods=on"]
 //   Plays the scenario on Forge (Java 8; reused while nothing it depends on changed) and Lich (Java 25), and writes
 //   run/harness/<pack>/report.md and run/harness/summary.md. <packs>: ids, comma-separated, all, @quick or @<mc>.
 // -Plich.java8Home=<jdk dir> picks the Java 8 the Forge baseline runs on. Everything the tasks' lambdas use is a
@@ -93,7 +94,7 @@ tasks.register<JavaExec>("runPack") {
     description = "Plays modpacks on Forge (Java 8) and Lich (Java 25) and compares the runs step by step."
     // The lich-forge-<mc> and forge-<mc> version JSONs devlaunch starts, for both versions (a suite may mix them).
     dependsOn(":installer:installDevProfiles")
-    harness("run", option("baseline"), option("until"), option("hold"), option("gallery"), option("server"))
+    harness("run", option("baseline"), option("until"), option("skip"), option("hold"), option("gallery"), option("server"), option("mods"))
 }
 
 /** --<name> <value> for -Plich.<name>, or nothing. The lambda captures only its parameter (configuration cache). */

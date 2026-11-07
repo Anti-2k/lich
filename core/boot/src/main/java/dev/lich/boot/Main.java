@@ -7,6 +7,8 @@ import dev.lich.compat.v1_7_10.Minecraft1710;
 import dev.lich.compat.v1_7_10.forge.Forge1710;
 import dev.lich.compat.v1_8_9.Minecraft189;
 import dev.lich.compat.v1_8_9.forge.Forge189;
+import dev.lich.compat.v1_12_2.Minecraft1122;
+import dev.lich.compat.v1_12_2.forge.Forge1122;
 import dev.lich.launchwrapper.LaunchCore;
 import dev.lich.launchwrapper.LaunchHooks;
 import dev.lich.launchwrapper.LichExclusions;
@@ -18,7 +20,9 @@ import dev.lich.loader.LichTweaker;
 import dev.lich.loader.ModLoadingException;
 import dev.lich.remap.SrgRemapper;
 import dev.lich.remap.core.SrgFile;
+import dev.lich.transform.ClassFiles;
 import dev.lich.transform.CompatTransformer;
+import dev.lich.transform.MethodrefTags;
 import net.minecraft.launchwrapper.Launch;
 import net.minecraft.launchwrapper.LaunchClassLoader;
 import org.apache.logging.log4j.LogManager;
@@ -79,7 +83,7 @@ public final class Main {
         if (!dropped.isEmpty()) {
             log.info("Left out of the class path, Lich ships its own: {}", dropped);
         }
-        String minecraft = Profile.minecraftVersion(tweakClasses, LichSystemClassLoader.mappings());
+        String minecraft = Profile.minecraftVersion(tweakClasses, LichSystemClassLoader.mappings(), args);
         boolean srgNames = profile == Profile.FORGE || useSrgRemapper(log);
         List<LichMod> mods = loadLichMods(log, args, profile, minecraft, srgNames, version, relauncher);
         installCompat(log, tweakClasses, minecraft, profile == Profile.FORGE, srgNames, !mods.isEmpty());
@@ -178,7 +182,12 @@ public final class Main {
                 Forge1710.hideLichMods(builder);
             }
         } else if (tweakClasses.contains(Profile.FML_1_8_9) && lichMods) {
-            Forge189.hideLichMods(builder);
+            // 1.8.9 and 1.12.2 share FML's tweaker; the version tells which FML it is.
+            if ("1.12.2".equals(minecraft)) {
+                Forge1122.hideLichMods(builder);
+            } else {
+                Forge189.hideLichMods(builder);
+            }
         }
         CompatTransformer compat = builder
                 .listener((className, what) -> log.info("Compat: {} in {}", what, className))
@@ -186,6 +195,11 @@ public final class Main {
         // Lich's own classes never need it, and the shims call the very methods it redirects to them.
         LichTransformers.addFirst((name, transformedName, bytes) ->
                 transformedName.startsWith("dev.lich.") ? bytes : compat.transform(transformedName, bytes));
+        // What mods' transformers write, after all of them: Java 9+ refuses a call to a class's method through an
+        // InterfaceMethodref, which Java 8 ran (MethodrefTags).
+        LichTransformers.addLast((name, transformedName, bytes) -> transformedName.startsWith("dev.lich.") ? bytes
+                : MethodrefTags.fix(bytes, ClassFiles::isKnownClass,
+                        owner -> log.info("Compat: made calls to {} class calls in {}", owner, transformedName)));
 
         // LWJGL 2 calls onto LWJGL 3, last, so mods' transformers and Mixins still see (and target) the
         // original calls. The system class loader also runs it on what it defines (lwjgl_util, the sound
@@ -210,6 +224,8 @@ public final class Main {
             Minecraft1710.registerSrgPatches(gameFixes, forge);
         } else if ("1.8.9".equals(minecraft)) {
             Minecraft189.registerSrgPatches(gameFixes, forge);
+        } else if ("1.12.2".equals(minecraft)) {
+            Minecraft1122.registerSrgPatches(gameFixes, forge);
         }
         if (srgNames) {
             CompatTransformer game = gameFixes

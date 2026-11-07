@@ -1,6 +1,7 @@
 package dev.lich.compat.v1_8_9;
 
 import dev.lich.compat.shared.BrandingPatches;
+import dev.lich.compat.shared.ShutdownRace;
 import dev.lich.compat.shared.SoundLoaderRace;
 import dev.lich.transform.CompatTransformer;
 

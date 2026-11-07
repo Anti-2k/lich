@@ -51,25 +51,40 @@ final class UnfinalizedFields {
         private final Field field;
         private final Class<?> type;
         private final boolean isStatic;
-        private final Object staticBase;
-        private final long offset;
+        // A static field's base and offset are looked up at the first access, after the class is initialized. Both
+        // are written before the volatile flag, so a thread that sees the flag sees them.
+        private Object staticBase;
+        private long offset;
+        private volatile boolean staticReady;
 
         Accessor(Field field, boolean isStatic) {
             this.field = field;
             this.type = field.getType();
             this.isStatic = isStatic;
-            if (isStatic) {
+            if (!isStatic) {
+                offset = UNSAFE.objectFieldOffset(field);
+            }
+        }
+
+        /**
+         * The JDK's own accessor initializes the class at the first read or write, not when the field's
+         * {@code final} flag goes: ObjectHolderRef clears it while it scans classes whose static initializers
+         * need blocks that aren't registered yet (NuclearCraft's {@code NCBiomes}).
+         */
+        private synchronized void prepareStatic() {
+            if (!staticReady) {
                 UNSAFE.ensureClassInitialized(field.getDeclaringClass());
                 staticBase = UNSAFE.staticFieldBase(field);
                 offset = UNSAFE.staticFieldOffset(field);
-            } else {
-                staticBase = null;
-                offset = UNSAFE.objectFieldOffset(field);
+                staticReady = true;
             }
         }
 
         private Object base(Object target) {
             if (isStatic) {
+                if (!staticReady) {
+                    prepareStatic();
+                }
                 return staticBase;
             }
             Objects.requireNonNull(target, "target of an instance field");

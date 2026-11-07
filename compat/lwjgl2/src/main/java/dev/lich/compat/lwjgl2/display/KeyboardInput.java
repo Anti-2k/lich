@@ -2,6 +2,7 @@ package dev.lich.compat.lwjgl2.display;
 
 import org.lwjgl.glfw.GLFW;
 
+import java.nio.ByteBuffer;
 import java.util.ArrayDeque;
 
 /**
@@ -34,7 +35,8 @@ public final class KeyboardInput {
     }
 
     private static final ArrayDeque<Event> QUEUE = new ArrayDeque<>();
-    private static final boolean[] DOWN = new boolean[256];
+    /** One byte per key, as LWJGL 2's: RenderLib reads it directly, from {@code Keyboard.keyDownBuffer}. */
+    private static final ByteBuffer DOWN = ByteBuffer.allocate(256);
     private static boolean created;
     private static boolean repeatEnabled;
     /** The key press still waiting for its character, already queued. */
@@ -47,8 +49,13 @@ public final class KeyboardInput {
     public static synchronized void create() {
         created = true;
         QUEUE.clear();
-        java.util.Arrays.fill(DOWN, false);
+        java.util.Arrays.fill(DOWN.array(), (byte) 0);
         pending = null;
+    }
+
+    /** The live key states: non-zero while a key is down. */
+    public static ByteBuffer keyDownBuffer() {
+        return DOWN;
     }
 
     public static synchronized void destroy() {
@@ -73,8 +80,8 @@ public final class KeyboardInput {
         }
         int key = KeyCodes.toLwjgl(glfwKey, scancode);
         boolean press = action != GLFW.GLFW_RELEASE;
-        if (key > 0 && key < DOWN.length) {
-            DOWN[key] = press;
+        if (key > 0 && key < DOWN.capacity()) {
+            DOWN.put(key, (byte) (press ? 1 : 0));
         }
         Event event = new Event(key, '\0', press, action == GLFW.GLFW_REPEAT, System.nanoTime());
         if (offer(event) && press) {
@@ -129,7 +136,7 @@ public final class KeyboardInput {
     }
 
     public static synchronized boolean isKeyDown(int key) {
-        return key >= 0 && key < DOWN.length && DOWN[key];
+        return key >= 0 && key < DOWN.capacity() && DOWN.get(key) != 0;
     }
 
     public static synchronized void enableRepeatEvents(boolean enable) {

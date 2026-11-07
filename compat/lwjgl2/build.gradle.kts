@@ -94,7 +94,7 @@ tasks.register<JavaExec>("checkLinkage") {
     description = "Lists the LWJGL 2 references in the game, Forge and mods that don't link on LWJGL 3 under Lich."
     val run = rootProject.layout.projectDirectory.dir("run")
     val defaults = listOf(
-        "cache/versions/1.7.10/1.7.10.jar", "cache/versions/1.8.9/1.8.9.jar",
+        "cache/versions/1.7.10/1.7.10.jar", "cache/versions/1.8.9/1.8.9.jar", "cache/versions/1.12.2/1.12.2.jar",
         "cache/libraries/net/minecraftforge", "cache/libraries/com/paulscode",
         "cache/libraries/org/lwjgl/lwjgl/lwjgl_util", "corpus",
     ).map { run.file(it).asFile.absolutePath }

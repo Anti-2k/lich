@@ -65,8 +65,25 @@ class PrismInstanceTest {
     }
 
     @Test
+    void keepsEverySupportedForgeBuildOf1122(@TempDir Path dir) throws Exception {
+        for (String build : List.of("14.23.5.2859", "14.23.5.2860", "14.23.5.2864")) {
+            PrismInstance instance = PrismInstance.read(instance(dir, """
+                    {"uid": "net.minecraft", "version": "1.12.2"},
+                    {"uid": "net.minecraftforge", "version": "%s"}""".formatted(build)));
+            assertNull(instance.problem());
+            assertNull(instance.forgeChange(false), build + " is supported as it is");
+            instance.ensureForge(false);
+            assertEquals(build, instance.version(PrismInstance.FORGE));
+        }
+        PrismInstance other = PrismInstance.read(instance(dir, """
+                {"uid": "net.minecraft", "version": "1.12.2"},
+                {"uid": "net.minecraftforge", "version": "14.23.5.2838"}"""));
+        assertTrue(other.forgeChange(false).contains("14.23.5.2838 to 14.23.5.2859"));
+    }
+
+    @Test
     void refusesWhatLichCantRunWith(@TempDir Path dir) throws Exception {
-        assertTrue(PrismInstance.read(instance(dir, "{\"uid\": \"net.minecraft\", \"version\": \"1.12.2\"}"))
+        assertTrue(PrismInstance.read(instance(dir, "{\"uid\": \"net.minecraft\", \"version\": \"1.9.4\"}"))
                 .problem().contains("1.12.2"));
         assertTrue(PrismInstance.read(instance(dir, """
                 {"uid": "net.minecraft", "version": "1.8.9"}, {"uid": "net.fabricmc.fabric-loader", "version": "0.16.0"}"""))

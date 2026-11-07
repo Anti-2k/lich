@@ -10,6 +10,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Lich's test harness for Forge mod compatibility through whole modpacks (DOCS.md §7). Each pinned pack plays the same
@@ -24,16 +25,20 @@ public final class Main {
               prism <pack>    create the Prism instances <pack>-forge-<mc> and <pack>-lich-<mc> from it
               run <packs>     play the scenario on Forge (Java 8) and Lich (Java 25), compare, and write
                               <run-dir>/harness/<pack>/report.md and <run-dir>/harness/summary.md
-            <packs>: pack ids, comma-separated, or all, @<tag> (@quick) or @<mc version> (@1.8.9). Packs with a
+            <packs>: pack ids, comma-separated, or all, @<tag> (@quick) or @<mc version> (@1.12.2). Packs with a
             "skip" reason in packs.json only run when named.
             Options:
               --run-dir <dir>       Lich's run directory (cache, test servers, harness output)
               --java8-home <dir>    the JDK 8 the Forge baseline and the test server run on
               --instances <dir>     Prism's instances folder (prism)
               --baseline <mode>     auto: rerun Forge only when what it depends on changed (default);
-                                    rerun: always; skip: Lich alone, compared with nothing
+                                    rerun: always; skip: Lich alone, compared with nothing; forge: Forge alone,
+                                    compared with the last Lich run (after a skip run broke; same step options)
               --until <step>        stop after this step (boot, mods, server, world, spawn, tour, inventory,
                                     gallery, hold, save, reload)
+              --skip <steps>        leave these out, comma-separated (mods, server, tour, inventory, gallery,
+                                    hold, reload); server goes straight to the world
+              --mods <on|off>       open FML's mod list and every config screen (default off)
               --hold <seconds>      how long the hold step stays in the world (default 20)
               --gallery <on|off>    place every block (default: the pack's "gallery" setting)
               --server <on|off>     join the local test server (default on, when run/server-<mc> exists)
@@ -60,8 +65,8 @@ public final class Main {
     }
 
     /** The parsed command line. */
-    private record Options(Path runDir, Path java8Home, Path instances, String baseline, String until, int hold,
-                           Boolean gallery, boolean server) {
+    private record Options(Path runDir, Path java8Home, Path instances, String baseline, String until, Set<String> skip,
+                           int hold, Boolean gallery, boolean server, boolean mods) {
         Path java8() {
             return java8Home.resolve("bin").resolve(exe("java"));
         }
@@ -78,9 +83,11 @@ public final class Main {
         Path instances = null;
         String baseline = "auto";
         String until = null;
+        Set<String> skip = Set.of();
         int hold = 20;
         Boolean gallery = null;
         boolean server = true;
+        boolean mods = false;
         for (int i = 2; i < args.length; i++) {
             String option = args[i];
             String value = i + 1 < args.length ? args[++i] : null;
@@ -91,16 +98,18 @@ public final class Main {
                 case "--run-dir" -> runDir = Path.of(value);
                 case "--java8-home" -> java8Home = Path.of(value);
                 case "--instances" -> instances = Path.of(value);
-                case "--baseline" -> baseline = oneOf(option, value, "auto", "rerun", "skip");
+                case "--baseline" -> baseline = oneOf(option, value, "auto", "rerun", "skip", "forge");
                 case "--until" -> until = value.isEmpty() ? null : value;
+                case "--skip" -> skip = value.isEmpty() ? Set.of() : Set.of(value.split(","));
                 case "--hold" -> hold = Integer.parseInt(value);
                 case "--gallery" -> gallery = value.isEmpty() ? null : oneOf(option, value, "on", "off").equals("on");
                 case "--server" -> server = oneOf(option, value, "on", "off").equals("on");
+                case "--mods" -> mods = oneOf(option, value, "on", "off").equals("on");
                 default -> throw new IllegalArgumentException("Unknown option " + option + "\n\n" + USAGE);
             }
         }
-        Options options = new Options(runDir.toAbsolutePath().normalize(), java8Home, instances, baseline, until, hold,
-                gallery, server);
+        Options options = new Options(runDir.toAbsolutePath().normalize(), java8Home, instances, baseline, until, skip,
+                hold, gallery, server, mods);
         if (!Files.isRegularFile(options.java8())) {
             throw new IllegalArgumentException("No Java 8 at " + options.java8() + "; pass --java8-home (-Plich.java8Home)");
         }
@@ -168,7 +177,8 @@ public final class Main {
             throws IOException, InterruptedException {
         Path template = installer.install(pack);
         Scenario scenario = Scenario.of(pack, options.until(), options.hold(),
-                options.server() && TestServer.available(options.runDir(), pack.mc()), options.gallery());
+                options.server() && pack.noServer() == null && TestServer.available(options.runDir(), pack.mc()),
+                options.gallery(), options.mods(), options.skip());
         if (scenario.server() && !servers.containsKey(pack.mc())) {
             servers.put(pack.mc(), TestServer.start(options.runDir(), pack.mc(), options.java8()));
         }
@@ -176,15 +186,16 @@ public final class Main {
         Files.createDirectories(packDir);
         System.out.println("[harness] Steps: " + String.join(", ", scenario.steps()));
 
+        Path lichResult = packDir.resolve(Profile.LICH.id + ".json");
+        boolean forgeOnly = options.baseline().equals("forge");
+        RunResult storedLich = forgeOnly ? RunResult.read(lichResult) : null;
+        if (forgeOnly && storedLich == null) {
+            throw new IllegalArgumentException("No Lich run of " + pack.id() + " to compare Forge with: " + lichResult);
+        }
         RunResult baseline = null;
         boolean reused = false;
         if (!options.baseline().equals("skip")) {
-            Path forgeProfile = options.runDir().resolve("cache").resolve("versions").resolve("forge-" + pack.mc())
-                    .resolve("forge-" + pack.mc() + ".json");
-            if (!Files.isRegularFile(forgeProfile)) {
-                throw new IOException("No " + forgeProfile + "; run :installer:installDevProfiles first");
-            }
-            String key = Baseline.key(pack, scenario, launcher.driverJar(), forgeProfile, options.java8());
+            String key = Baseline.key(pack, scenario, launcher.driverJar(), launcher.forgeProfile(pack), options.java8());
             baseline = options.baseline().equals("auto") ? Baseline.usable(packDir, key, scenario) : null;
             reused = baseline != null;
             if (reused) {
@@ -200,8 +211,8 @@ public final class Main {
             }
         }
 
-        RunResult run = play(pack, template, Profile.LICH, scenario, baseline, launcher, lich, null);
-        run.write(packDir.resolve(Profile.LICH.id + ".json"));
+        RunResult run = forgeOnly ? storedLich : play(pack, template, Profile.LICH, scenario, baseline, launcher, lich, null);
+        run.write(lichResult);
         Verdict verdict = Verdict.of(run, baseline);
         Path report = Report.write(packDir.resolve("report.md"), pack, PackInstaller.countMods(template), verdict, run,
                 baseline, reused);

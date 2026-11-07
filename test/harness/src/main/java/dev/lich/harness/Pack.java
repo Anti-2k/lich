@@ -21,20 +21,31 @@ import java.util.TreeMap;
  * mods. Its {@link Source} says where it comes from. Its optional {@code setup} answers first-launch prompts the way
  * a player would, once, in the pack's game directory: {@code unzip} unpacks archives the pack ships into it,
  * {@code copy} copies directories (target: source; Blightfall's world-creation screen, through Lockdown, copies its
- * map template {@code flans/} into {@code saves/}), and {@code write} writes files. Without that, a prompt comes up on every run (a fresh copy each time) on the desktop of
+ * map template {@code flans/} into {@code saves/}), {@code write} writes files, and {@code remove} deletes what the
+ * pack ships but can't be tested with (a relauncher that leaves Lich for another loader), and {@code download} fetches
+ * a file the pack should have shipped ({@code url}, {@code sha512}: Glitch's Modern Warfare ships a second copy of
+ * ModularWarfare under MCglTF's name, and not MCglTF). Without that, a prompt comes up on every run (a fresh copy each time) on the desktop of
  * whoever is using it: SkyBlock Enhanced's PackCore asks which of its config presets to unpack. {@code worldType} is
  * the world type the pack's create-world screen starts on (The Lost Era's DefaultWorldGenerator makes it RTG), which
  * the world driver uses too; {@code default} without one. {@code save} names a world the pack ships in {@code saves/}
  * (Blightfall is played on its own map): the world driver opens it instead of creating one.
  * <p>
  * For the harness's runs: {@code tags} put the pack in suites ({@code @quick}); {@code skip} says why the pack can't
- * run unattended, which leaves it out of every suite (it still runs when named); {@code gallery} turns on the step that
+ * run unattended, which leaves it out of every suite (it still runs when named); {@code noServer} says why the pack
+ * can't play on the vanilla test server (mods that change vanilla packets, such as RoughlyEnoughIDs), which leaves the
+ * {@code server} step out of its scenario; {@code gallery} turns on the step that
  * places every block, and {@code galleryExclude} names blocks that step must leave out (ones that crash the game on
  * Forge too).
  */
 record Pack(String id, String name, String mc, String forge, Source source, int memoryMb,
-            List<String> unzip, Map<String, String> copy, Map<String, String> write, String worldType, String save,
-            List<String> tags, String skip, boolean gallery, List<String> galleryExclude) {
+            List<String> unzip, Map<String, String> copy, Map<String, String> write, List<String> remove,
+            Map<String, Download> download,
+            String worldType, String save, List<String> tags, String skip, String noServer, boolean gallery,
+            List<String> galleryExclude) {
+    /** A file {@code setup} downloads into the pack, checked against its SHA-512. */
+    record Download(String url, String sha512) {
+    }
+
     /**
      * Where a pack comes from, and the pin that fixes its contents. Every file is checked against the hash its
      * format gives.
@@ -70,7 +81,8 @@ record Pack(String id, String name, String mc, String forge, Source source, int 
             return switch (type) {
                 case "mrpack" -> get("url");
                 case "solder" -> "Technic pack " + get("slug") + " build " + get("build") + " (" + get("api") + ")";
-                case "ftb" -> "FTB pack " + get("pack") + " version " + get("version");
+                case "ftb" -> (values.getOrDefault("namespace", "ftb").equals("curseforge") ? "CurseForge pack " : "FTB pack ")
+                        + get("pack") + " version " + get("version");
                 case "zip" -> get("url");
                 case "atlauncher" -> "ATLauncher pack " + get("pack") + " version " + get("version");
                 default -> type;
@@ -98,8 +110,19 @@ record Pack(String id, String name, String mc, String forge, Source source, int 
         List<String> unzip = new ArrayList<>();
         Map<String, String> copy = new LinkedHashMap<>();
         Map<String, String> write = new LinkedHashMap<>();
+        List<String> remove = new ArrayList<>();
+        Map<String, Download> download = new LinkedHashMap<>();
         if (p.has("setup")) {
             JsonObject setup = p.getAsJsonObject("setup");
+            if (setup.has("remove")) {
+                setup.getAsJsonArray("remove").forEach(e -> remove.add(e.getAsString()));
+            }
+            if (setup.has("download")) {
+                for (Map.Entry<String, JsonElement> e : setup.getAsJsonObject("download").entrySet()) {
+                    JsonObject file = e.getValue().getAsJsonObject();
+                    download.put(e.getKey(), new Download(file.get("url").getAsString(), file.get("sha512").getAsString()));
+                }
+            }
             if (setup.has("unzip")) {
                 setup.getAsJsonArray("unzip").forEach(e -> unzip.add(e.getAsString()));
             }
@@ -120,9 +143,11 @@ record Pack(String id, String name, String mc, String forge, Source source, int 
         Source source = new Source(s.get("type").getAsString(), Map.copyOf(values));
         return new Pack(id, p.get("name").getAsString(), p.get("mc").getAsString(), p.get("forge").getAsString(), source,
                 p.get("memoryMb").getAsInt(), List.copyOf(unzip), Map.copyOf(copy), Map.copyOf(write),
-                p.has("worldType") ? p.get("worldType").getAsString() : "default",
+                List.copyOf(remove), Map.copyOf(download),
+                p.has("worldType") ? p.get("worldType").getAsString() : "screen",
                 p.has("save") ? p.get("save").getAsString() : null,
                 strings(p, "tags"), p.has("skip") ? p.get("skip").getAsString() : null,
+                p.has("noServer") ? p.get("noServer").getAsString() : null,
                 p.has("gallery") && p.get("gallery").getAsBoolean(), strings(p, "galleryExclude"));
     }
 
@@ -167,7 +192,9 @@ record Pack(String id, String name, String mc, String forge, Source source, int 
     /** Identifies the pinned pack and its setup, so a template built for an older pin or setup is rebuilt. */
     String fingerprint() {
         return source.type() + " " + new TreeMap<>(source.values()) + " "
-                + Integer.toHexString(Objects.hash(unzip, new TreeMap<>(copy), new TreeMap<>(write)));
+                + Integer.toHexString(Objects.hash(unzip, new TreeMap<>(copy), new TreeMap<>(write)))
+                + (remove.isEmpty() ? "" : " remove=" + remove)
+                + (download.isEmpty() ? "" : " download=" + new TreeMap<>(download));
     }
 
     static Pack get(String id) {

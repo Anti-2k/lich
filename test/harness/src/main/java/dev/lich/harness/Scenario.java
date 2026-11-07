@@ -5,12 +5,15 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.TreeSet;
 
 /**
  * What every profile of a pack plays (DOCS.md §7), as steps the driver takes in order:
  * <ol>
  *     <li>{@code boot}: the game starts and its first screen settles;</li>
- *     <li>{@code mods}: FML's mod list, every mod selected and every config screen opened;</li>
+ *     <li>{@code mods} (on request, to look into a pack's trouble): FML's mod list, every mod selected and every
+ *     config screen opened;</li>
  *     <li>{@code server}: joins the local vanilla test server, stays 15 s and leaves;</li>
  *     <li>{@code world}: creates a creative world with a fixed seed, or opens the map the pack ships;</li>
  *     <li>{@code spawn}: until the chunks around spawn have loaded;</li>
@@ -23,6 +26,7 @@ import java.util.Map;
  *     <li>{@code exit}: the game shuts down as its close button does.</li>
  * </ol>
  * {@code until} cuts the list after a step, for a quick look ({@code boot} only checks that the pack starts).
+ * {@code skip} leaves steps out, for going straight to the world ({@code server}).
  */
 record Scenario(List<String> steps, int holdSeconds, boolean server, boolean gallery) {
     static final List<String> ALL = List.of("boot", "mods", "server", "world", "spawn", "tour", "inventory", "gallery",
@@ -30,18 +34,32 @@ record Scenario(List<String> steps, int holdSeconds, boolean server, boolean gal
     /** Both profiles generate the same world. */
     static final long SEED = 7_350_118_032L;
     static final int SERVER_STAY_SECONDS = 15;
+    /** The steps no later step stands on. */
+    static final Set<String> SKIPPABLE = Set.of("mods", "server", "tour", "inventory", "gallery", "hold", "reload");
 
+    /** The usual scenario: no {@code mods} step. */
     static Scenario of(Pack pack, String until, int holdSeconds, boolean server, Boolean gallery) {
-        boolean withGallery = gallery != null ? gallery : pack.gallery();
+        return of(pack, until, holdSeconds, server, gallery, false, Set.of());
+    }
+
+    static Scenario of(Pack pack, String until, int holdSeconds, boolean server, Boolean gallery, boolean mods,
+                       Set<String> skip) {
         if (until != null && !ALL.contains(until)) {
             throw new IllegalArgumentException("Unknown step " + until + "; steps: " + String.join(", ", ALL));
         }
+        for (String step : skip) {
+            if (!SKIPPABLE.contains(step)) {
+                throw new IllegalArgumentException("Can't skip " + step + "; skippable: " + String.join(", ", new TreeSet<>(SKIPPABLE)));
+            }
+        }
+        boolean withServer = server && !skip.contains("server");
+        boolean withGallery = (gallery != null ? gallery : pack.gallery()) && !skip.contains("gallery");
         List<String> steps = new ArrayList<>();
         for (String step : ALL) {
-            if (step.equals("server") && !server || step.equals("gallery") && !withGallery) {
-                continue;
+            if (!(step.equals("mods") && !mods || step.equals("server") && !withServer
+                    || step.equals("gallery") && !withGallery || skip.contains(step))) {
+                steps.add(step);
             }
-            steps.add(step);
             if (step.equals(until)) {
                 break;
             }
@@ -49,7 +67,7 @@ record Scenario(List<String> steps, int holdSeconds, boolean server, boolean gal
         if (!steps.getLast().equals("exit")) {
             steps.add("exit");
         }
-        return new Scenario(List.copyOf(steps), holdSeconds, server, withGallery);
+        return new Scenario(List.copyOf(steps), holdSeconds, withServer, withGallery);
     }
 
     /** The steps the driver plays itself: all but {@code exit}, which the harness sees through. */

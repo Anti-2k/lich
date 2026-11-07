@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Lich is a client-side runtime and mod loader that runs Minecraft 1.7.10 and 1.8.9 on Java 25. It loads
+Lich is a client-side runtime and mod loader that runs Minecraft 1.7.10, 1.8.9 and 1.12.2 on Java 25. It loads
 unmodified Java 8 Forge mods through real Forge, patched at load time, and its own mod format
 (`lich.mod.json`) for mods written for Lich. Package root: `dev.lich`.
 
@@ -40,6 +40,9 @@ README's support tables change (a new version, platform or loader), update them 
 # Through Lich on Java 25, without Forge (lich) or with it (lich-forge). Every profile but vanilla first
 # writes lich-<mc>, forge-<mc> and lich-forge-<mc> into run/cache (:installer:installDevProfile)
 ./gradlew :devlaunch:runGame "-Plich.profile=lich-forge" "-Plich.mc=1.7.10" "-Plich.gameJavaHome=<JDK 25 home>"
+# 1.12.2 has three supported Forge builds (14.23.5.2859 recommended, the default; 14.23.5.2860; 14.23.5.2864 latest): pick one for the
+# forge-1.12.2 and lich-forge-1.12.2 profiles with -Plich.forge
+./gradlew :devlaunch:runGame "-Plich.profile=lich-forge" "-Plich.mc=1.12.2" "-Plich.forge=14.23.5.2864" "-Plich.gameJavaHome=<JDK 25 home>"
 # Join a server straight away, or just print the command
 ./gradlew :devlaunch:runGame "-Plich.profile=lich" "-Plich.args=--game-arg --server --game-arg 127.0.0.1 --game-arg --port --game-arg 25599"
 ./gradlew :devlaunch:runGame "-Plich.args=--dry-run --skip-assets"
@@ -56,7 +59,8 @@ README's support tables change (a new version, platform or loader), update them 
   devlaunch downloads Forge from Forge's Maven into `run/cache`.
 - To check a change to Forge on Java 25, diff the game log against the Java 8 `forge` profile's:
   apart from Lich's own lines, Java versions and thread interleaving they should match line for line.
-- Local test servers: `run/server-1.8.9` (port 25599) and `run/server-1.7.10` (port 25598), vanilla
+- Local test servers: `run/server-1.8.9` (port 25599), `run/server-1.7.10` (port 25598) and `run/server-1.12.2` (port 25597, RCON
+  25587 with password `lichtest`), vanilla
   `server.jar` from the version JSON, `online-mode=false`, `server-ip=127.0.0.1`. `run/` isn't in git, so
   create them on a new machine (download the jar, accept the EULA, set those two properties and the port).
   Start them with JDK 8 (`java -jar server.jar nogui` in that folder) and wait for `Done (` in the console.
@@ -77,7 +81,7 @@ README's support tables change (a new version, platform or loader), update them 
 
 ## Testing in Prism (real account, public servers, singleplayer)
 
-- By convention the test instances are `lich-forge-1.8.9` and `lich-forge-1.7.10`: a Forge instance with
+- By convention the test instances are `lich-forge-1.8.9`, `lich-forge-1.7.10` and `lich-forge-1.12.2`: a Forge instance with
   Lich added as a custom component, Java 25 pinned, `AutomaticJava=false` and `IgnoreJavaCompatibility=true`
   in `instance.cfg` (otherwise Prism falls back to Java 8). Make one by copying a Forge instance, or ask which
   to use. **Only touch instances made for Lich testing**: any other instance is the user's own, and may be what
@@ -105,8 +109,9 @@ build-logic/        convention plugin `lich.java` (Java 25, UTF-8, -Xlint:all)
 core/               boot, launchwrapper, transform, remap, loader, mixin-provider
 compat/             jdk (removed-API shims, reflection compat), asm (ASM 5 on ASM 9), lwjgl2 (LWJGL 2 API on LWJGL 3)
 api/                public version-neutral Lich API
-versions/<mc>/      compat-mc, compat-forge, api; Gradle projects are named v1_8_9-compat-mc etc.
-versions/shared/    compat-mc (project shared-compat-mc): game fixes identical in 1.7.10 and 1.8.9;
+versions/<mc>/      compat-mc, compat-forge, api; Gradle projects are named v1_8_9-compat-mc etc. (1.7.10, 1.8.9, 1.12.2)
+versions/shared/    compat-mc (project shared-compat-mc): game fixes identical in several versions
+                    (the sound and shutdown races: 1.8.9 and 1.12.2; branding: all three);
                     api: sources both per-version api projects compile (no project of its own)
 mods/               first-party Lich mods, not part of the runtime
 tools/              devlaunch, installer
@@ -124,14 +129,14 @@ Working so far:
   `http.agent` (DOCS.md §2.4).
 - `transform`: the compat pass, `CompatTransformer`. `compat-jdk` and `compat-asm` hold the shims and
   register their rules with it (`JdkCompat`, `AsmCompat`).
-- `shared-compat-mc`, `v1_7_10-compat-mc` and `v1_8_9-compat-mc`: game fixes on SRG names, run as
+- `shared-compat-mc`, `v1_7_10-compat-mc`, `v1_8_9-compat-mc` and `v1_12_2-compat-mc`: game fixes on SRG names, run as
   Lich's last transformer in both profiles (the vanilla profile needs MCP's mappings for SRG names).
-  `v1_7_10-compat-forge`/`v1_8_9-compat-forge`: hide Lich mods from FML's discovery.
+  `v1_7_10-compat-forge`/`v1_8_9-compat-forge`/`v1_12_2-compat-forge`: hide Lich mods from FML's discovery.
 - `remap`: the vanilla profile's obf → SRG remapper. `loader`, `api` and the `versions/<mc>/api` projects: Lich
   mods (`lich.mod.json`, entrypoints, hooks woven on demand); a full client mod runs on them. `mixin-provider`: the Mixin
   Lich mods run on, started only when Lich mods are installed. `testmod`: a Lich mod for 1.8.9 that touches every
-  part of the loader (`:testmod:installDev`). `multimod`: one jar for 1.7.10 and 1.8.9, built with the plugin's
-  multi-version mode (`lich { minecraft("1.7.10", "1.8.9") }`, DOCS.md §5.1); its build fails if a shared class
+  part of the loader (`:testmod:installDev`). `multimod`: one jar for 1.7.10, 1.8.9 and 1.12.2, built with the plugin's
+  multi-version mode (`lich { minecraft("1.7.10", "1.8.9", "1.12.2") }`, DOCS.md §5.1); its build fails if a shared class
   links differently on the two versions. Try it without touching a mods folder through
   `--jvm-arg -Dlich.devMods=<jar>` in `-Plich.args`.
 - `compat-lwjgl2`: LWJGL 2's API on LWJGL 3 (DOCS.md §2.5). LWJGL 2-only classes under their own names
@@ -147,14 +152,16 @@ Working so far:
   (`--prism <dir>`, or `prismlauncher --dir <dir>` for a real launch), never the user's own instances.
 - `devlaunch`.
 - `harness` (`test/harness`): Forge mod compatibility through whole modpacks, pinned in `packs.json` (Modrinth, Technic
-  Solder or zip, FTB or ATLauncher sources; DOCS.md §7). `./gradlew :harness:runPack "-Plich.pack=lost-era"` plays one
-  scenario through a driver tweaker (boot, mod list and config screens, the local test server, a singleplayer world:
+  Solder or zip, FTB, CurseForge (through FTB's mirror) or ATLauncher sources; DOCS.md §7). `./gradlew :harness:runPack "-Plich.pack=rlcraft"` plays one
+  scenario through a driver tweaker (boot, the local test server, a singleplayer world:
   spawn, tour, creative inventory, hold, save, reload, exit) on Forge/Java 8 and Lich/Java 25, and writes
   `run/harness/<pack>/report.md` (a verdict: pass, review, FAIL, pack broken; the steps side by side; suspect lines
   only Lich logged first) and `run/harness/summary.md`. The Forge run is a cached baseline (`baseline.json`), rerun
   only when the pack, driver or scenario settings change, so a rerun after a Lich change runs Lich alone.
-  `-Plich.pack` takes ids, comma-separated, `all`, `@quick` or `@1.8.9`; `-Plich.until=boot` stops after a step;
-  `-Plich.baseline=rerun|skip`, `-Plich.hold=<s>`, `-Plich.gallery=on` (place every block), `-Plich.server=off`. No
+  `-Plich.pack` takes ids, comma-separated, `all`, `@quick` or `@1.12.2`; `-Plich.until=boot` stops after a step;
+  `-Plich.skip=server` leaves steps out (straight to the world); `-Plich.mods=on` adds FML's mod list and every
+  config screen, off by default, for looking into a pack's trouble; `-Plich.baseline=rerun|skip|forge` (`skip` plays Lich alone; after a
+  break, `forge` plays Forge alone and compares it with that Lich run), `-Plich.hold=<s>`, `-Plich.gallery=on` (place every block), `-Plich.server=off`. No
   `-Plich.mc`: both versions' dev profiles get installed. A stall leaves a thread dump in `stall-threads-<profile>.txt`.
   Run one game at a time (a big 1.7.10 pack takes ~6 GB of RAM; the harness does), and no Hypixel
   SkyBlock packs (project policy: repetitive, RAT risk). `:harness:prismPack`

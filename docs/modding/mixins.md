@@ -86,6 +86,13 @@ names you see in your IDE. The processor checks them against the compile classpa
 MixinExtras is on the compile classpath, so `@WrapOperation`, `@ModifyExpressionValue`, `@Local`, `@Share` and the
 rest are available. Lich's own hooks use it (see `ChatMixin` in `versions/1.8.9/api` for `@WrapOperation`).
 
+Two things to know when a Mixin targets a Forge class on **1.12.2**. Forge's own packages are signed in the recommended
+build (14.23.5.2859) and in 14.23.5.2860, and every class of a signed package must carry the same signatures, while a class Mixin creates
+(javac's switch map for a `switch` on an enum, an anonymous inner class) has none: it fails with `SecurityException:
+signer information does not match`. Keep such constructs out of a Mixin whose target is a Forge class (use `if`
+chains, not `switch` on an enum). The same Mixin works in the latest build (14.23.5.2864), which Forge ships unsigned,
+so only the signed builds show the failure.
+
 ### 3. The refmap
 
 Produced by the compile, bundled into the jar. In a single-version build you do not touch it. `reobfJar` then

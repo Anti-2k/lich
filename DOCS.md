@@ -1,10 +1,10 @@
 # Lich — design and internals
 
 The detailed companion to the [README](README.md): the design decisions, everything that breaks when
-1.7.10/1.8.9 run on Java 25 and how Lich fixes it, the architecture, the Lich mod format, the test setup
+1.7.10, 1.8.9 and 1.12.2 run on Java 25 and how Lich fixes it, the architecture, the Lich mod format, the test setup
 and the roadmap. It's also the project's source of truth: when a decision changes, it changes here first.
 
-A client-side runtime and mod loader that runs Minecraft 1.7.10 and 1.8.9 on Java 25. It patches game,
+A client-side runtime and mod loader that runs Minecraft 1.7.10, 1.8.9 and 1.12.2 on Java 25. It patches game,
 Forge and mod bytecode at load time so that unmodified Java 8 Forge mods work. It also loads its own
 mod format, whose hooks go as deep into the game as possible, so mods get maximum control. Lich itself only
 loads mods: the game plays as vanilla (or Forge) does, and anything beyond running on Java 25 is a mod.
@@ -19,7 +19,7 @@ jars before building on them. Dates are when a finding was made or a decision ta
 | LaunchWrapper | Lich has its own. RetroFuturaBootstrap and lwjgl3ify are references for behavior; code is only taken where the licenses allow it. |
 | Forge mods | They load through real Forge in Forge's own format (`@Mod` + `mcmod.info`), patched at load time, and are meant to behave as they do on Java 8 without changes or Lich-specific setup. Lich's hooks stay out of their way: with no Lich mods, none is woven. |
 | Lich mods | Their own format (`lich.mod.json`), with or without Forge. |
-| Game versions | 1.7.10 (Forge `10.13.4.1614`) and 1.8.9 (Forge `11.15.1.2318`). Version-specific code stays isolated, so 1.12.2 can follow. |
+| Game versions | 1.7.10 (Forge `10.13.4.1614`), 1.8.9 (Forge `11.15.1.2318`) and 1.12.2 (Forge `14.23.5.2859`, the recommended build, `14.23.5.2860`, which most Modrinth packs pin, and `14.23.5.2864`, the latest; all three are tested, the installer adds the recommended one and keeps the others). Version-specific code stays isolated in `versions/<mc>/`. |
 | Side | Client, plus the integrated singleplayer server that ships in the client jar. Joining a public server should look and behave like a normal client (§6). |
 | Java | 25 for Lich and Lich mods. Forge mods stay Java 8 bytecode. |
 | Game logic | Core touches the game where Java 25 needs it to (JDK/ASM redirects, reflection compat, fixes for bugs Java 25 exposes such as the sound race). With no Lich mods the game plays as vanilla or Forge does on Java 8. |
@@ -45,7 +45,7 @@ Never redistribute Minecraft or patched Forge binaries. Patch at load time, or o
 
 ---
 
-## 2. What breaks when 1.7.10/1.8.9 run on Java 25
+## 2. What breaks when 1.7.10/1.8.9/1.12.2 run on Java 25
 
 ### 2.1 Class loading (the main blocker)
 - `net.minecraft.launchwrapper.Launch` casts the system class loader to `URLClassLoader`. On Java 9+
@@ -76,7 +76,12 @@ Never redistribute Minecraft or patched Forge binaries. Patch at load time, or o
 | `javax.activity.InvalidActivityException` (CORBA) | 11 (JEP 320) | LiteLoader 1.7.10 (`LiteLoader.getMod`; fatal at its bootstrap): Blightfall, The 1.7.10 Pack | **Done (2026-10-27):** renamed to a look-alike in `compat-jdk` (same superclass, `RemoteException`, and constructors) |
 | Nashorn `jdk.nashorn.*` | 15 | Scripting mods: Fisk's Superheroes (hero packs in JS) | **Done (Phase 4):** Lich ships `nashorn-core` 15.7 (on its ASM 9, hidden from mod discovery, a class loader exclusion) and the compat pass renames `jdk/nashorn/` → `org/openjdk/nashorn/`, plus the class names mods pass to `Class.forName`. Its engines load game classes through the context class loader (LaunchClassLoader) |
 | `sun.misc.BASE64Encoder/Decoder` | 9 | Old mods/libs | Not done, no tested mod or pack has needed it yet. Plan: redirect to a shim |
-| `sun.reflect.Reflection.getCallerClass` | 9 | log4j 2.0-beta9 (has a fallback), mods | Not done, no tested mod has needed it yet. Plan: a shim on `StackWalker` |
+| `sun.reflect.Reflection.getCallerClass` | 9 | log4j 2.0-beta9 (has a fallback), Future MC (fatal in world generation) | **Done (2026-11-07):** renamed to a stand-in on `StackWalker` that counts frames the same way |
+| `ClassLoader.packages` hidden from reflection | 12 | NormalASM and its forks (FermiumASM, ...): only reads the names, to share their strings; fatal at FML's mod discovery | **Done (2026-11-07):** `ReflectionShims` hands out a field holding an empty map; only that saving is lost |
+| `invokestatic` on an interface through a plain method reference | 9 (JDK-8145148) | Forge's generated event wrappers, for a static `@SubscribeEvent` on an interface: Electroblob's Wizardry | **Done (2026-11-07):** `ForgeEventWrappers` makes those wrappers (only those) Java 8 classes with an interface reference |
+| `invokestatic`/`invokespecial` on a class through an interface method reference (Java 8 went by the owner, not the constant) | 9 | Coremods that turn an interface call into a static call to their own class and keep the node's `itf` flag: TickCentral (LagGoggles) on Forge's `EventBus.post`; Divine Journey 2 | **Done (2026-11-07):** after every transformer, `MethodrefTags` flips such constants to plain method references (same layout, one byte), when the owner's class file is found and isn't an interface |
+| `new ScriptEngineManager(null)` finds no JavaScript engine (it only looks among the JDK's own, and Nashorn left in 15) | 15 | Solar Flux Reborn (asks for "Nashorn"; fatal in pre-init): Divine Journey 2 | **Done (2026-11-07):** the loader goes through `ScriptEngines.withNashorn`, which turns `null` into the system class loader, where Lich's Nashorn is |
+| `UUID.fromString` rejects strings over 36 characters, and masks overlong groups | 9 | Solar Flux Reborn (`"28575920-a562b-e364d-388af-837a6b8f5a8c"`, an attribute modifier; fatal in pre-init): Divine Journey 2 | **Done (2026-11-07):** `UuidConstants` replaces a string constant passed straight to `UUID.fromString` that Java 9+ rejects or reads differently with the well-formed string of Java 8's value (`Uuids`, Java 8's algorithm), so it matches what items saved on Java 8 carry. Only those classes change: redirecting every call broke XU2-Patcher, which checksums Extra Utilities 2's classes after the compat pass (The 1.12.2 Pack). A malformed string built at run time still fails |
 | `Thread.stop/suspend/resume` now throw | 20 | Rare mods | Not done. Plan: redirect to a no-op that logs a warning |
 | Applet API | JDK 26 (JEP 504) | Old game/launcher classes **(verify)** | Not removed in 25 yet; watch it |
 
@@ -117,6 +122,16 @@ Never redistribute Minecraft or patched Forge binaries. Patch at load time, or o
     The compat pass *rebases* such subclasses onto `compat-asm`'s `Asm5*` classes, which extend the
     ASM 9 class and keep the old constructors (`CompatTransformer.Builder.rebase`). List found by
     diffing the constructors with a `getClass()` check in ASM 5.0.3 and 9.8.
+  - **(2026-11-07, 1.12.2 packs)** ASM 9 throws on lambdas and method handles passed to an `ASM4`-level
+    `MethodVisitor`; ASM 5 passed them on. AdvSolarPatch's visitor says `ASM4`, so mod visitors extend
+    `Asm5MethodVisitor`, which forwards those two calls whatever the level. A `ClassWriter` made from a
+    `ClassReader` that gets a method before `reader.accept(writer)` (EnderCore's elytra patch) has no class version
+    yet when a frame arrives: ASM 5 didn't need one, ASM 9 throws and `Asm5Frames` would drop the frame, so mod code's
+    `new ClassWriter(...)` is an `Asm5ClassWriter`, which takes the version from its reader. And a renamed type can
+    make two methods identical: Sledgehammer declares its Mixin plugin's `preApply` for both Mixin's shaded ASM and
+    plain ASM, so after the rename the compat pass keeps only the one already written against plain ASM.
+  - **(2026-11-07)** ZenUtils (CraftTweaker add-on, Divine Journey 2) takes any Java newer than 8 for Cleanroom and
+    then looks for Cleanroom's class loader. `ZenUtilsPlatform` sets its `IS_CLEANROOM` flag to false.
   - FML 1.7.10 lets `LaunchClassLoader` define its own copy of ASM (1.8.9 excludes it); the copy
     broke the ASM shims with loader constraint violations. Lich excludes `org.objectweb.asm.` in both.
 - **Lich's system class loader (Phase 3)**: tweakers and FML's launch code (`FMLTweaker`,
@@ -194,11 +209,11 @@ Never redistribute Minecraft or patched Forge binaries. Patch at load time, or o
   every time, while Java 8 narrowly wins it. `shared-compat-mc`'s `SoundLoaderRace` makes a reload wait
   for the loader thread. Like every game fix it keys on SRG names, so it runs in both profiles (the vanilla
   profile has them through `remap`), but not in a vanilla install without MCP's mappings.
-- **Shutdown race in 1.8.9's `IntegratedServer.initiateShutdown`**: "Save and Quit" sends the disconnect, then
+- **Shutdown race in 1.8.9's (and 1.12.2's) `IntegratedServer.initiateShutdown`**: "Save and Quit" sends the disconnect, then
   queues a log-out task for the server thread and waits for it. If the server has already seen the disconnect and
   left its tick loop, the task never runs and the client freezes on "Saving world" for good. Vanilla's race (the
   Java 8 baseline froze once in two packs), but Lich froze 2 of 2 (found 2026-10-31, CubeSoft and SolitaryCraft
-  VanillaPlus). `v1_8_9-compat-mc`'s `ShutdownRace` ends the wait once `isServerStopped()`: stopping has saved
+  VanillaPlus). `shared-compat-mc`'s `ShutdownRace` (it was `v1_8_9-compat-mc`'s until 1.12.2 had the same code) ends the wait once `isServerStopped()`: stopping has saved
   and removed the players by then, which is all the task does. 1.7.10 has no such task. Checked 2026-10-31: CubeSoft,
   SolitaryCraft VanillaPlus, Lucky Block Add On and the 1.8 PvP Pack all save, quit and reopen their world in world mode
   on Lich, both quits included.
@@ -275,6 +290,52 @@ Never redistribute Minecraft or patched Forge binaries. Patch at load time, or o
 - **LiteLoader's class path injection** (open): LiteLoader 1.7.10 reflects on `sun.misc.URLClassPath` to put jars at a
   chosen place in the class path, logs an error when the class isn't there, and appends them with `addURL` instead.
   Litemods load; only their order relative to other jars differs from Java 8.
+- **Minecraft 1.12.2 (added 2026-11-07)**: what differs from 1.8.9, found by running it (vanilla and Forge, Windows x64):
+  - *Which version is it?* 1.8.9 and 1.12.2 share FML's tweaker class name (`net.minecraftforge.fml.common.launcher.FMLTweaker`),
+    so boot can't tell them apart by it. `Profile.minecraftVersion` takes the version from MCP's mappings
+    (`mcp-<mc>-srg.zip`, which the installer adds to every Lich profile, Forge or not), then from the tweaker (1.7.10's
+    differs), then from the launcher's `--assetIndex` (`1.12` → 1.12.2, `1.8` → 1.8.9; an unknown one means 1.8.9, as before).
+    Without this, 1.12.2 would have got 1.8.9's FML rules and game fixes.
+  - *Libraries*: log4j 2.8.1 (Forge 2859 and later put 2.15.0 on top), jopt-simple 5.0.3, Guava 21, Gson 2.8.0,
+    commons-lang3 3.5, Netty 4.1.9, JNA 4.4.0 and OSHI, `text2speech` (the narrator). All ran on Java 25 as they are;
+    the compat pass only redirects JNA's `Field.set`. Forge's `asm-debug-all` 5.2 is dropped for Lich's ASM 9 like
+    1.8.9's asm-all (it is an ASM < 9 by its manifest, nothing to add). Mojang's `client-1.12.xml` (`%msg{nolookups}`)
+    is the Log4Shell fix; Forge's JSON has `"logging": {}`, so no config is passed and boot's own `log4j2-safe.xml`
+    applies, which parses on both log4j versions. `SessionLogFilter` works on 2.8.1 and 2.15.0 (checked 2026-11-07
+    with `DEVLAUNCH_ACCESS_TOKEN` set to text that a log line contains: the line is dropped). 1.12.2 doesn't log the
+    session line at all.
+  - *FML*: `FMLTweaker` still calls `System.setSecurityManager`, `ClassPatchManager` still uses Pack200, ObjectHolder and
+    `EnumHelper` use the same reflection: the existing rules cover them (the log shows the same `Compat:` lines as 1.8.9).
+    What changed is mod discovery. `FileListHelper` is no longer used for the mods folder: `LibraryManager.gatherLegacyCanidates`
+    (a `List<File>` of `mods/` and `mods/1.12.2/`) and the private `CoreModManager.listFiles` list it, so
+    `Forge1122.hideLichMods` filters what those two return (`LichSources.withoutLichMods` has a `List` overload for it).
+    `LibraryManager` still examines the jar for a Maven manifest entry (`cleanDirectory`), which a Lich mod has none of.
+  - *Forge builds*: FML 2859 (recommended, signed), 2860 (signed, what most Modrinth 1.12.2 packs pin) and 2864 (latest, unsigned: the jar has no signature files, so FML logs "not signed" and "missing any
+    signature data"; not run on Java 8 for 2864) have the same library list but for the Forge jar and an unused slf4j bridge in 2859.
+    All three reach the menu and load the Lich API. 2860's jar has the same classes as 2859's but for the two holding the version number
+    (`ForgeVersion`, `FMLInjectionData`), and on Lich it logs what it logs on Java 8 (2026-11-07). The Forge jar is `net.minecraftforge:forge:1.12.2-<build>:universal`
+    on Forge's Maven (the installer jar carries the same file). Signed builds matter for one thing: a class Mixin generates
+    in a signed package (javac's switch map on an enum, an anonymous class) has no signers and `LaunchClassLoader` (as
+    LaunchWrapper 1.12) defines it without, so the JVM refuses it (`signer information does not match`). Lich's own
+    1.12.2 hook Mixins avoid such classes; the modding guide warns mod authors.
+  - *Game fixes*: `SoundManager` (`func_148596_a`/`func_148608_i`) and `IntegratedServer.initiateShutdown` (`func_71263_m`) have
+    1.8.9's code and SRG names, and `Futures.getUnchecked` is still what the shutdown waits in, so `SoundLoaderRace` and
+    `ShutdownRace` are registered (both moved to `shared-compat-mc`; the log shows `Game fix:` lines for both). Whether
+    the sound race actually loses on 1.12.2 wasn't measured separately: the structure is identical, and the fix is a wait that
+    only matters when the race happens. The main menu's version line (`BrandingPatches.MainMenu`) and FML's branding list
+    apply as on 1.8.9 (`Game fix:` lines in both profiles).
+  - *Launching*: devlaunch needed nothing new but the Forge JSON. 1.12.2's version JSON still uses `minecraftArguments`
+    (`arguments` came with 1.13). Prism's component for it is the same `org.lwjgl` 2.9.4-nightly-20150209.
+  - *Mixin target names*: `Minecraft.startGame` is `init`, the mouse loop is in `runTickMouse`, the HUD's `renderTooltip` is
+    `renderHotbar`, `showCrosshair` is gone (the crosshair is inside `renderAttackIndicator`), `renderBossHealth` is on
+    `GuiBossOverlay`, mount health is its own method (`renderMountHealth`), `handleChat` makes one call
+    (`GuiIngame.addChatMessage(ChatType, ITextComponent)`), `getTooltip` takes an `ITooltipFlag`, `drawHoveringText` is
+    overloaded (the Mixin names the `List` one), and with Forge `GuiUtils.drawHoveringText` has an `ItemStack` overload that
+    the plain one calls. See `versions/1.12.2/api`.
+  - *A trap for shared code*: log4j 2.8.1 has fixed-arity `info(String, Object...)` overloads that 2.0-beta9 lacks, so
+    a shared multi-version class that logs with arguments compiles to different methods per version and `reobfJar`'s
+    byte-for-byte check refuses it (found 2026-11-07 with `multimod`). `Minecraft.mcDataDir` is `gameDir` in
+    `stable_39`, so `KeyBindings` has a 1.12.2 copy (which also reads Forge 1.12's `key_<name>:<code>:<modifier>` option lines).
 
 ### 2.5 LWJGL
 - **Confirmed (2026-10-24, Windows x64, Temurin 25.0.4):** vanilla 1.8.9 with LWJGL 2.9.4 reaches the
@@ -348,6 +409,8 @@ Never redistribute Minecraft or patched Forge binaries. Patch at load time, or o
     (The Lost Era). `Mouse` declares all 35 of LWJGL 2.9's fields in its order, the unused ones too, because
     Witching Gadgets takes `getDeclaredFields()[17]` for `readBuffer` (found 2026-10-31, GT New Horizons: an
     `ArrayIndexOutOfBoundsException` at init, then a null buffer when the Thaumonomicon search opens).
+  - `Keyboard.keyDownBuffer` (LWJGL 2's private key-state buffer) holds the live key states: RenderLib reads it by
+    reflection to check keys from any thread (found 2026-11-07, Optimized FPS on 1.12.2).
   - **`org.lwjgl.MemoryUtil`** (LWJGL 2's buffer addresses and string encoding; found 2026-10-31, GT New Horizons):
     Angelica's Sodium writes vertex data through `getAddress`, and without the class the game crashed on joining a
     world. Lich's copy has LWJGL 2's whole public API, on LWJGL 3's `org.lwjgl.system.MemoryUtil`.
@@ -394,7 +457,7 @@ game **in SRG in both profiles**. In the vanilla profile, Lich does the obf → 
 SRG data downloaded at install time (not bundled). Because of this:
 - One Lich mod jar (SRG-reobfuscated, same as a Forge mod) works with and without Forge.
 - Mixin refmaps target SRG in all cases. That's what Lich mod builds produce.
-- Dev mappings (what `mcdev` compiles Lich mods against): for 1.8.9 MCP `stable_22`; for 1.7.10 the MCP names
+- Dev mappings (what `mcdev` compiles Lich mods against): for 1.8.9 MCP `stable_22`, for 1.12.2 `stable_39` (ForgeGradle 2.3's default); for 1.7.10 the MCP names
   Forge 1.7.10 ships in its userdev jar (`conf/fields.csv`, `methods.csv`), which ForgeGradle and
   RetroFuturaGradle use by default, so 1.7.10 Forge mod code ports unchanged. (Changed 2026-10-25 from
   `stable_12`, which names many members Forge's names leave as `func_…` and renames a few, like
@@ -420,8 +483,9 @@ SRG data downloaded at install time (not bundled). Because of this:
 | `testmod` + `harness` | Automated tests (§7) |
 | `mcdev` (included build) | `remap-core` (mappings, hierarchy-aware remapper, also used by `remap` at runtime) and the `dev.lich.mod` Gradle plugin that Lich mods and the per-version API modules build with (§3.1) |
 
-To add 1.12.2 later, add `compat-forge-1.12.2`, `compat-mc-1.12.2` and `api-1.12.2`. Nothing else should
-need to change. Keep version-specific code out of the core modules.
+A new version is `compat-forge`, `compat-mc` and `api` under `versions/<mc>/`, a name for `mcdev`'s
+`MinecraftSetup`, a `forge-<mc>.json` for the installer and a case in `Main` (1.12.2 was added this way on 2026-11-07;
+the only core change was telling it apart from 1.8.9, §2.4). Keep version-specific code out of the core modules.
 
 Patching rule: FML/launch-time classes load before Mixin is up, so patch them with **raw ASM
 transformers** (compat-pass rules). Core's Java 25 fixes to game classes are ClassPatches on SRG names in
@@ -494,8 +558,12 @@ mods copied: the string constants `"sun.reflect.ReflectionFactory"` (only in cla
 `"sun.reflect.ConstructorAccessor"` are renamed to Lich look-alikes in `dev.lich.compat.jdk.reflect`, so
 the same reflective lookups land on Lich's methods. Field accessors write through
 `jdk.internal.misc.Unsafe`; constructor accessors call a method handle, which works for enum
-constructors. In classes containing `"modifiers"`, `Class.getDeclaredField` hands out a dummy for
-`Field.modifiers` and `Field.set` writes static finals. `getInt`/`setInt` (and `set`) on the dummy read and write
+constructors. `Class.getDeclaredField` hands out a dummy for `Field.modifiers`, in every class: IC2's
+`ReflectionUtil.getField` takes the field's name as an argument and looks it up for GraviSuite, which wrote
+`setInt` on what came back and stopped in pre-init without it (found 2026-11-07, NanoMagic and The 1.12.2 Pack).
+That rewrites every class that calls it, which a patcher that checksums a mod's classes after the compat pass refuses
+(XU2-Patcher, IC2-Patcher, GraviSuite-Patcher: see `UuidConstants`); none of the classes they patch calls it so far.
+In classes containing `"modifiers"`, `Field.set` writes static finals. `getInt`/`setInt` (and `set`) on the dummy read and write
 the target `Field`'s own modifiers, as on Java 8, and clearing `final` gives that `Field` an accessor that writes
 through `Unsafe` (`UnfinalizedFields`, which implements `jdk.internal.reflect.FieldAccessor`), so a plain
 `Field.set` anywhere afterwards works. HardcoreEnderExpansion clears the flag in one class and writes in
@@ -549,10 +617,11 @@ Three commons-compress behaviors needed working around (`Pack200Test` covers the
   `lich-installer-<version>.jar`: a Swing window when double-clicked, a command line with arguments (`--help`).
   It creates an instance (Minecraft, LWJGL 2 and Forge components; Prism fetches their metadata on first load) or
   adds Lich to an existing one, and then:
-  - **Forge**: the instance gets the one build Lich supports (`PrismInstance.FORGE_VERSIONS`, §0). If Forge is
-    missing it's added right after Minecraft (unless the person opts out). Another Forge build gets switched,
-    after asking (`--yes` on the command line), and Prism's cached metadata of the old build is dropped.
-  - **Refuses**: Minecraft versions other than 1.7.10/1.8.9, Fabric, Legacy Fabric, Quilt, NeoForge, and Prism's
+  - **Forge**: the instance gets the build Lich supports (`PrismInstance.FORGE_VERSIONS`, §0; for 1.12.2 the recommended
+    `14.23.5.2859`, and `14.23.5.2860` and `14.23.5.2864` are kept as they are: `FORGE_ALSO`). If Forge is missing it's added right after
+    Minecraft (unless the person opts out). Another Forge build gets switched, after asking (`--yes` on the command
+    line), and Prism's cached metadata of the old build is dropped.
+  - **Refuses**: Minecraft versions other than 1.7.10/1.8.9/1.12.2, Fabric, Legacy Fabric, Quilt, NeoForge, and Prism's
     `org.lwjgl3` component (two LWJGL 3s in one JVM, §2.5). LiteLoader is allowed.
   - **Java**: `JavaPath` is the Java running the installer (`javaw.exe` on Windows), or `--java`, checked to be
     25+ through `java -version`. `AutomaticJava=false`, `IgnoreJavaCompatibility=true`, and Prism's cached facts
@@ -737,7 +806,10 @@ differ by 1 ulp between JDKs **(verify)**.
   pinned in `packs.json` by its source: a Modrinth `.mrpack` and its SHA-512, a Technic pack's Solder build (mod zips
   with MD5s, unpacked in order; `bin/` skipped after checking its Forge is the profile's), a Technic pack that is one
   client zip (its SHA-512 added by the pin), an FTB pack version (files with SHA-1s, a fifth of them from CurseForge's
-  CDN, so FTB is also the keyless way to CurseForge's files), or an ATLauncher pack version (MD5s from its
+  CDN, so FTB is also the keyless way to CurseForge's files), a CurseForge pack (the same source with
+  `"namespace": "curseforge"`: FTB's API mirrors every CurseForge pack by project and file id, with a SHA-1 per mod and the
+  pack zip itself as a `cf-extract` entry, whose `overrides/` go on top of the mods; no API key, every file
+  hash-checked), or an ATLauncher pack version (MD5s from its
   `Configs.json`); one installer class per source. A pack that names an older 1.7.10 Forge (`packForge`) runs on the
   profile's 1614, as most such packs do in practice. No more Hypixel SkyBlock packs (2026-10-27): they repeat
   the same mods, and their many small-author mods are the likeliest to carry a RAT. `:harness:fetchPack` installs a
@@ -749,20 +821,22 @@ differ by 1 ulp between JDKs **(verify)**.
   - **One scenario** (`:harness:runPack "-Plich.pack=<packs>"`): each profile (`forge` on Java 8, `lich-forge` on
     Java 25) starts from a fresh copy of the template, with the same `options.txt` overrides (no sound or fullscreen,
     no pause on lost focus, view distance 8, 30 fps in the world), and plays the same steps: `boot` (the first screen
-    settles), `mods` (FML's mod list, every mod selected so its logo and description draw, every config screen opened
-    the way the Config button makes it), `server` (joins the local vanilla test server, which starts while the game
+    settles), `mods` (on request: FML's mod list, every mod selected so its logo and description draw, every config
+    screen opened the way the Config button makes it), `server` (joins the local vanilla test server, which starts while the game
     boots, stays 15 s, leaves), `world` (a creative world with a fixed seed and the pack's `worldType`, or the map the
     pack ships, `save`; Blightfall's template `flans/` is copied into `saves/` by its `setup.copy`), `spawn`, `tour`
     (8 teleports 1000 blocks out, so new chunks generate in many biomes), `inventory` (every creative tab; the search
     tab scrolled page by page, so every item is drawn once), `gallery` (opt-in per pack: one of every block placed
     through `/setblock` and kept through the save), `hold` (20 s: machines, mobs, timers), `save` (save and quit as the
     pause menu does; `level.dat` and region files must be there), `reload` (the world opens again; the gallery's tile
-    entities must all come back) and `exit`. `-Plich.until=<step>` cuts the list (`boot` only checks the pack starts).
+    entities must all come back) and `exit`. `-Plich.until=<step>` cuts the list (`boot` only checks the pack starts);
+    `-Plich.skip=server` leaves steps out, to go straight to the world. `mods` only runs with `-Plich.mods=on`.
   - **The driver** (`dev.lich.harness.driver`) joins the launch as an extra LaunchWrapper tweaker (Java 8 bytecode, in
     a jar on the class path), so the same jar drives Forge on Java 8 and Lich. It reaches the game only by reflection
-    on SRG names (the same in 1.7.10 and 1.8.9, apart from tile entity positions), changes it only through the client
-    thread's task queue, and waits for it with `findLoadedClass`, so it never loads a game class before FML's
-    transformers are in. It asks every live thread's context class loader as well as `Launch.classLoader`: FoamFix
+    on SRG names (the same in 1.7.10 and 1.8.9, apart from tile entity positions), changes it only on the client
+    thread (through its task queue; starting and leaving a world from the client tick, as a real click does, because
+    the queue's lock is held while its tasks run and a mod queuing a task from the server thread would deadlock on it),
+    and waits for it with `findLoadedClass`, so it never loads a game class before FML's transformers are in. It asks every live thread's context class loader as well as `Launch.classLoader`: FoamFix
     swaps `cachedClasses` for another map, and Essential relaunches the whole launch (Lich's boot included) in a class
     loader of its own. Steps wait on the game, not on a clock: a place counts as arrived at when every chunk within 6
     of the player is loaded and populated on the server and the player's chunk is on the client (waiting for the chunk
@@ -790,7 +864,9 @@ differ by 1 ulp between JDKs **(verify)**.
     side by side, the driver's numbers (chunks, entities, tile entities, mean tick time, heap) and the log differences,
     suspect lines first; `run/harness/summary.md` a row per pack with what changed since its previous run
     (`history.jsonl`). `-Plich.pack` takes ids, `all`, `@quick` or `@<mc>`; packs with a `skip` reason (they can't run
-    unattended) only run when named. One game at a time: the dev machine has 16 GB, and a 1.7.10 pack with a 4 GB heap
+    unattended) only run when named, and packs with a `noServer` reason (they can't play on a vanilla server, on Forge
+    either: RoughlyEnoughIDs changes vanilla packets) leave the `server` step out. A game's leftover Java processes are
+    stopped when its run ends (Divine Journey 2's Crash Assistant window). One game at a time: the dev machine has 16 GB, and a 1.7.10 pack with a 4 GB heap
     uses ~6 GB.
   - **Speed** (2026-10-31, SolitaryCraft VanillaPlus, every step including the gallery): the Forge run took 130 s,
     the old world mode 5–6 min whatever the pack (a fixed 5.3 min of waits in its driver, which also counted the first
@@ -845,9 +921,33 @@ differ by 1 ulp between JDKs **(verify)**.
       ship them. Ultimate Warfare (CodeChickenCore's DepLoader: CodeChickenLib, ForgeMultipart, and bspkrsCore from
       bspk.rs, which also opens an error dialog on the desktop) and Eldritch Revolution (Thaumcraft's loader: Baubles
       from a dead Dropbox link). Not Lich problems; they'd need those jars added to the pack's `setup`.
-- **Multimod** (`test/multimod`): one jar for 1.7.10 and 1.8.9 (§5.1). Shared code, plus a Mixin, a widener and
-  an entrypoint per version, each logging a `Lich multimod:` line. Its build is the regression check for the
+- **Multimod** (`test/multimod`): one jar for 1.7.10, 1.8.9 and 1.12.2 (§5.1). Shared code, plus a Mixin, a widener and
+  an entrypoint per version, each logging a `Lich multimod:` line. The 1.12.2 part declares every hook and listens to every
+  event, logging the first firing of each, so a launch log shows which of the 20 hook Mixins apply (a Mixin that can't find
+  its injection point stops the game with `defaultRequire`) and fire. 2026-11-07, vanilla and Forge 2859 (`lich`/`lich-forge`),
+  joined to `run/server-1.12.2` with commands over RCON: tick, frame, screen, sound, chat, fog (colour, distance), field of
+  view, world last, block outline and HUD pre/post fired; the rest (entity render, item/render tooltip, attack, mouse input,
+  F3 text) applied but need a player doing something, so they haven't fired yet. Its build is the regression check for the
   plugin's multi-version mode (2026-10-31: all three lines on both versions, `lich` profile).
+- **1.12.2 packs** (2026-11-07, all steps, Lich only unless noted; `run/server-1.12.2`, port 25597). The driver
+  knows the few SRG names 1.12 renamed (`getPlayerList`, the server's chunk provider, `provideChunk`). Fourteen packs
+  were pinned, popular and broad ones chosen to break Lich; they turned up the Lich fixes dated 2026-11-07 in §2.3, §2.4
+  and §4.4 (`sun.reflect.Reflection`, `ClassLoader.packages`, Forge's interface event wrappers, interface method
+  references, Nashorn through `ScriptEngineManager(null)`, overlong UUID strings, ZenUtils' Cleanroom check,
+  `Keyboard.keyDownBuffer`, GraviSuite's and NanoMagic's reflection).
+  - Complete every step on Lich: **Compact Claustrophobia 1.3.5.2** (also against its Forge/Java 8 baseline),
+    **Parasites: Reloaded**, **Optimized FPS**, **SuperHeroes**, **Space Craft**, **SevTech: Ages 3.2.3**, **MC Eternal
+    1.6.2.3**, **Divine Journey 2 2.23.4**, **The 1.12.2 Pack 1.6.6**, **Roguelike Adventures and Dungeons 1.56** (no
+    `server` step: leaving a vanilla server crashes it on Forge too) and **Glitch's Modern Warfare 2.0.0** (its MCglTF jar
+    is a copy of ModularWarfare under the wrong name; the real one goes in through `setup`).
+  - Broken without Lich, so `skip`ped: **NanoMagic** (a mod's own crash in the creative search tab, on Forge too),
+    **RLCraft 2.9.3** (a malformed Recurrent Complex jar Java 25 rejects with or without Lich) and **Enigmatica 2
+    Expert** (Cleanroom-only mods, §8). MasterTech: Hollow Beginning was dropped: its mods come from a list on GitHub
+    the authors keep changing, and with OptiFine in that list the pack fails on Forge too.
+  - Also checked by hand: vanilla and Forge (2859, 2860, 2864) on Java 8 and Lich, the menu and branding of both
+    profiles, a Prism instance made by the installer on a real account (`lich-forge-1.12.2`), and
+    `:compat-lwjgl2:checkLinkage` with the 1.12.2 client and Forge in its inputs. **(verify)** Forge baselines for the
+    packs above, and a public server.
 - **Testmod** (`test/testmod`): a small Lich mod for 1.8.9 that touches every part of the loader (entrypoints,
   hooks, its own Mixin config, an access widener) and logs one `Lich testmod:` line per part. Planned: a Forge-mod
   half, and a `-Dlich.test=…` mode that loads a world, runs N ticks, dumps a report and exits with a status code
@@ -886,11 +986,20 @@ differ by 1 ulp between JDKs **(verify)**.
 | 4. Forge mods ✅ | Mixin provider, redirect table, reflection compat, JDK shims, modpack harness (§7) | Done: whole modpacks join and play on Lich with the same mixins applied as on Java 8 |
 | 5. Lich mods ✅ | `remap`, `loader`, `lich.mod.json`, `api` (lifecycle, events, HUD, keybinds, config; hooks woven on demand, §5.2), FML-hiding, dual jars | Done on both versions, with and without Forge |
 | 6. LWJGL 3 🟡 | `compat-lwjgl2` + redirects | Windows x64 done (§2.5). Left: Linux (X11, Wayland), macOS Apple Silicon, controllers |
-| 7. Ship 🟡 | Installer, Prism pack, docs, compat list, mod-dev docs and template | 0.3.0: Prism installer (§4.6), README tables, in-game branding. 0.3.1: multi-version Lich mod jars (§5.1). Mod developer guide in `docs/modding` (2026-11-03). Left: other launchers, publishing the API and the Gradle plugin (a mod is still a module in a Lich checkout), project template |
-| later | 1.12.2 (`compat-forge-1.12.2`, `compat-mc-1.12.2`, `api-1.12.2`) | — |
+| 7. Ship 🟡 | Installer, Prism pack, docs, compat list, mod-dev docs and template | 0.3.0: Prism installer (§4.6), README tables, in-game branding. 0.3.1: multi-version Lich mod jars (§5.1). 0.4.0: Minecraft 1.12.2. Mod developer guide in `docs/modding` (2026-11-03). Left: other launchers, publishing the API and the Gradle plugin (a mod is still a module in a Lich checkout), project template |
+| 1.12.2 ✅ | `versions/1.12.2/{compat-forge,compat-mc,api}`, Forge 14.23.5.2859, 14.23.5.2860 and 14.23.5.2864 (§0, §2.4), installer, `multimod` on all three versions | 0.4.0: vanilla and Forge on Java 25, eleven modpacks through the harness (§7), installer and a real Prism instance (2026-11-07). Left: Forge baselines for those packs, public servers, Linux and macOS |
 
 Note on startup: Java 25's AOT cache (JEP 483/514/515) doesn't cache classes from custom class loaders,
 so it helps little here. Cache *transformed class bytes* on disk instead (in `loader`).
+
+For later, undecided: **Cleanroom's relauncher.** `cleanroom-relauncher` (Enigmatica 2 Expert 1.93a ships it) is a coremod
+that downloads a JDK and Cleanroom into `~/.cleanroom` during FML's coremod discovery and restarts the game on them,
+while the first JVM waits. Under Lich that means a player silently ends up on Cleanroom instead, with nothing telling
+them. The harness only removes the jar from that pack's test copy (`setup.remove`). Whether Lich should stop or warn
+about it is open: stopping it changes what a pack does, which §0's "core doesn't change the game" argues against.
+Without the relauncher, that pack still doesn't load on Lich or on Forge (found 2026-11-07): it ships Cleanroom-only
+builds (`ModType: CRL` in the manifest) of CodeChickenLib ("CodeChickenLib CRE" 3.3.8), Fugue and Scalar Legacy,
+compiled for Java 21 and 25, which FML's discovery can't read. FML then reports CodeChickenLib missing.
 
 ---
 

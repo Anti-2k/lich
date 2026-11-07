@@ -35,6 +35,7 @@ public final class ProfileInstaller {
         Path prismInstance = null;
         Path payload = null;
         Path flagsFile = null;
+        String forgeBuild = null;
         Map<String, Path> libraries = new LinkedHashMap<>();
         for (int i = 0; i < args.length; i++) {
             switch (args[i]) {
@@ -43,6 +44,7 @@ public final class ProfileInstaller {
                 case "--prism-instance" -> prismInstance = Path.of(args[++i]);
                 case "--payload" -> payload = Path.of(args[++i]);
                 case "--flags" -> flagsFile = Path.of(args[++i]);
+                case "--forge" -> forgeBuild = args[++i];
                 case "--library" -> {
                     // group:artifact:version=path/to.jar
                     String[] parts = args[++i].split("=", 2);
@@ -54,7 +56,7 @@ public final class ProfileInstaller {
         long targets = java.util.stream.Stream.of(root, prismInstance, payload).filter(java.util.Objects::nonNull).count();
         if (mc == null || targets != 1 || flagsFile == null) {
             throw new IllegalArgumentException("Usage: --mc <version> (--root <launcher dir> | --prism-instance <instance dir>"
-                    + " | --payload <dir>) --flags <jvm-flags.txt> [--library <coords>=<jar>]...");
+                    + " | --payload <dir>) --flags <jvm-flags.txt> [--forge <build>] [--library <coords>=<jar>]...");
         }
         String version = libraries.keySet().stream().filter(c -> c.startsWith("dev.lich:")).findFirst().map(c -> c.split(":")[2]).orElse("dev");
         if (prismInstance != null) {
@@ -70,7 +72,7 @@ public final class ProfileInstaller {
             System.out.println("[installer] Wrote the installer payload for " + mc + " into " + payload);
             return;
         }
-        Path json = install(mc, root, readFlags(flagsFile), libraries);
+        Path json = install(mc, root, readFlags(flagsFile), libraries, forgeBuild);
         System.out.println("[installer] Wrote " + json);
     }
 
@@ -80,6 +82,16 @@ public final class ProfileInstaller {
      * would) and {@code lich-forge-<mc>} on top of it.
      */
     static Path install(String mc, Path root, List<String> jvmFlags, Map<String, Path> libraries) throws IOException {
+        return install(mc, root, jvmFlags, libraries, null);
+    }
+
+    /** {@link #install(String, Path, List, Map)} with a given Forge build (one Lich supports; null: the default one). */
+    static Path install(String mc, Path root, List<String> jvmFlags, Map<String, Path> libraries, String forgeBuild)
+            throws IOException {
+        String forgeVersion = forgeBuild != null ? forgeBuild : PrismInstance.FORGE_VERSIONS.get(mc);
+        if (forgeBuild != null && !PrismInstance.supportsForge(mc, forgeBuild)) {
+            throw new IllegalArgumentException("Lich doesn't support Forge " + forgeBuild + " for Minecraft " + mc);
+        }
         JsonArray libraryList = new JsonArray();
         for (Map.Entry<String, Path> library : libraries.entrySet()) {
             String path = mavenPath(library.getKey());
@@ -109,14 +121,31 @@ public final class ProfileInstaller {
         Path json = writeLichProfile(root, "lich-" + mc, mc, libraryList, arguments);
         try (InputStream forge = ProfileInstaller.class.getResourceAsStream("forge-" + mc + ".json")) {
             if (forge != null) {
+                String template = new String(forge.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
                 String forgeId = "forge-" + mc;
-                Path forgeJson = root.resolve("versions").resolve(forgeId).resolve(forgeId + ".json");
-                Files.createDirectories(forgeJson.getParent());
-                Files.write(forgeJson, forge.readAllBytes());
-                writeLichProfile(root, "lich-forge-" + mc, forgeId, libraryList, arguments);
+                writeForgeProfile(root, forgeId, template, forgeId, forgeVersion, libraryList, arguments, mc);
+                // A version with several builds also gets a profile per build: the harness runs each pack on the one it pins.
+                List<String> also = PrismInstance.FORGE_ALSO.getOrDefault(mc, List.of());
+                if (!also.isEmpty()) {
+                    for (String build : java.util.stream.Stream.concat(
+                            java.util.stream.Stream.of(PrismInstance.FORGE_VERSIONS.get(mc)), also.stream()).toList()) {
+                        writeForgeProfile(root, forgeId + "-" + build, template, forgeId, build, libraryList, arguments, mc);
+                    }
+                }
             }
         }
         return json;
+    }
+
+    /** Writes the plain Forge profile {@code id} for {@code build}, and the Lich profile {@code lich-<id>} on top of it. */
+    private static void writeForgeProfile(Path root, String id, String template, String templateId, String build,
+                                          JsonArray libraries, JsonObject arguments, String mc) throws IOException {
+        Path json = root.resolve("versions").resolve(id).resolve(id + ".json");
+        Files.createDirectories(json.getParent());
+        // The Forge builds of one Minecraft version differ in the Forge jar only; 1.7.10 and 1.8.9 have one build.
+        Files.writeString(json, template.replace("\"id\": \"" + templateId + "\"", "\"id\": \"" + id + "\"")
+                .replace("${forge}", String.valueOf(build)));
+        writeLichProfile(root, "lich-" + id, id, libraries, arguments);
     }
 
     private static Path writeLichProfile(Path root, String id, String parent, JsonArray libraries, JsonObject arguments)

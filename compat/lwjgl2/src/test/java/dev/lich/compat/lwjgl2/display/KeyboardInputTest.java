@@ -3,6 +3,10 @@ package dev.lich.compat.lwjgl2.display;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.lwjgl.glfw.GLFW;
+import org.lwjgl.input.Keyboard;
+
+import java.lang.reflect.Field;
+import java.nio.ByteBuffer;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -24,6 +28,19 @@ class KeyboardInputTest {
         assertEquals(key, KeyboardInput.eventKey());
         assertEquals(character, KeyboardInput.eventCharacter());
         assertEquals(state, KeyboardInput.eventState());
+    }
+
+    @Test
+    void theKeyStatesAreReadableAsLwjgl2sBuffer() throws ReflectiveOperationException {
+        // As RenderLib reads it.
+        Field field = Keyboard.class.getDeclaredField("keyDownBuffer");
+        field.setAccessible(true);
+        ByteBuffer buffer = (ByteBuffer) field.get(null);
+
+        KeyboardInput.key(GLFW.GLFW_KEY_T, 20, GLFW.GLFW_PRESS);
+        assertTrue(buffer.get(KEY_T) != 0);
+        KeyboardInput.key(GLFW.GLFW_KEY_T, 20, GLFW.GLFW_RELEASE);
+        assertEquals(0, buffer.get(KEY_T));
     }
 
     @Test

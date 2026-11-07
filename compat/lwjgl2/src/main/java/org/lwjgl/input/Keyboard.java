@@ -6,6 +6,7 @@ import org.lwjgl.opengl.Display;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
+import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -14,6 +15,10 @@ import java.util.Map;
  * one event). Key codes, names and the exceptions for using it before {@link #create} are LWJGL 2's.
  */
 public class Keyboard {
+    /** LWJGL 2's private field of this name. RenderLib reflects on it to read key states from any thread. */
+    @SuppressWarnings("unused")
+    private static final ByteBuffer keyDownBuffer = KeyboardInput.keyDownBuffer();
+
     public static final int EVENT_SIZE = 4 + 1 + 4 + 8 + 1;
     public static final int CHAR_NONE = '\0';
 

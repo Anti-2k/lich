@@ -14,7 +14,9 @@ import java.util.concurrent.ConcurrentHashMap;
  * class is being defined can't load other classes.
  */
 public final class ClassFiles {
-    private static final Map<String, Boolean> INTERFACES = new ConcurrentHashMap<>();
+    private static final Map<String, Kind> KINDS = new ConcurrentHashMap<>();
+
+    private enum Kind { CLASS, INTERFACE, UNKNOWN }
 
     private ClassFiles() {
     }
@@ -25,10 +27,19 @@ public final class ClassFiles {
      * from its modules either way. Unknown classes count as no interface.
      */
     public static boolean isInterface(String internalName) {
-        return INTERFACES.computeIfAbsent(internalName, ClassFiles::readIsInterface);
+        return kind(internalName) == Kind.INTERFACE;
     }
 
-    private static boolean readIsInterface(String internalName) {
+    /** Whether {@code internalName} has a class file, found as {@link #isInterface} finds it, that isn't an interface. */
+    public static boolean isKnownClass(String internalName) {
+        return kind(internalName) == Kind.CLASS;
+    }
+
+    private static Kind kind(String internalName) {
+        return KINDS.computeIfAbsent(internalName, ClassFiles::readKind);
+    }
+
+    private static Kind readKind(String internalName) {
         String resource = internalName + ".class";
         ClassLoader context = Thread.currentThread().getContextClassLoader();
         URL url = context == null ? null : context.getResource(resource);
@@ -36,12 +47,12 @@ public final class ClassFiles {
             url = ClassLoader.getSystemResource(resource);
         }
         if (url == null) {
-            return false;
+            return Kind.UNKNOWN;
         }
         try (InputStream in = url.openStream()) {
-            return (new ClassReader(in.readAllBytes()).getAccess() & Opcodes.ACC_INTERFACE) != 0;
+            return (new ClassReader(in.readAllBytes()).getAccess() & Opcodes.ACC_INTERFACE) != 0 ? Kind.INTERFACE : Kind.CLASS;
         } catch (IOException | IllegalArgumentException unreadable) {
-            return false;
+            return Kind.UNKNOWN;
         }
     }
 }

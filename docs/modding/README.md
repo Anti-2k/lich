@@ -18,7 +18,7 @@ different fog, a bigger tooltip) is a mod, and these pages are how you write one
 | [Events and hooks](events-and-hooks.md) | The event bus, hook ids, and every event Lich fires, with per-version differences |
 | [Mixins](mixins.md) | Mixin 0.8 and MixinExtras on SRG names: configs, refmaps, targeting, pitfalls |
 | [Access wideners](access-wideners.md) | Opening up private and final members, the file format, how it is applied |
-| [Several Minecraft versions in one jar](multi-version.md) | `minecraft("1.7.10", "1.8.9")`, source sets, the byte-for-byte check |
+| [Several Minecraft versions in one jar](multi-version.md) | `minecraft("1.7.10", "1.8.9", "1.12.2")`, source sets, the byte-for-byte check |
 | [Forge and Lich](forge-interop.md) | Running with and without Forge, dual jars, class loading |
 | [Server safety](server-safety.md) | What a mod may change without getting a player banned |
 | [Troubleshooting](troubleshooting.md) | Loader errors, what they mean, and how to read the log |
@@ -49,7 +49,7 @@ Stated plainly so nobody builds on something that is not there.
 
 | Area | State |
 |---|---|
-| Entrypoints (`preLaunch`, `init`, `client`), shutdown event | Works, 1.7.10 and 1.8.9, with and without Forge |
+| Entrypoints (`preLaunch`, `init`, `client`), shutdown event | Works, 1.7.10, 1.8.9 and 1.12.2, with and without Forge |
 | Event hooks (tick, frame, HUD, world, entity, fog, FOV, tooltips, screens, mouse, chat, sound, attack) | Works. List in [Events and hooks](events-and-hooks.md) |
 | Key bindings (`KeyBindings.register`) | Works |
 | Mixins with refmaps, MixinExtras | Works |
@@ -66,15 +66,16 @@ Stated plainly so nobody builds on something that is not there.
 
 ## Versions and names used in these pages
 
-| Thing | 1.7.10 | 1.8.9 |
-|---|---|---|
-| Forge Lich supports | 10.13.4.1614 | 11.15.1.2318 |
-| Names you write against (MCP) | Forge 1.7.10's userdev names (`conf/fields.csv`, `methods.csv`) | MCP `stable_22` |
-| Mixin | Fabric's Mixin 0.8.7 (`0.17.3+mixin.0.8.7`), MixinExtras 0.5.0 | same |
-| Java | 25 | 25 |
+| Thing | 1.7.10 | 1.8.9 | 1.12.2 |
+|---|---|---|---|
+| Forge Lich supports | 10.13.4.1614 | 11.15.1.2318 | 14.23.5.2859 (recommended), 14.23.5.2860 and 14.23.5.2864 (latest) |
+| Names you write against (MCP) | Forge 1.7.10's userdev names (`conf/fields.csv`, `methods.csv`) | MCP `stable_22` | MCP `stable_39` |
+| Mixin | Fabric's Mixin 0.8.7 (`0.17.3+mixin.0.8.7`), MixinExtras 0.5.0 | same | same |
+| Java | 25 | 25 | 25 |
 
-The MCP names differ between the two versions in places (for example `fontRenderer` on 1.7.10 and
-`fontRendererObj` on 1.8.9). Code you want on both versions needs the [multi-version setup](multi-version.md).
+The MCP names differ between the versions in places (for example `fontRenderer` on 1.7.10, `fontRendererObj` on
+1.8.9 and `fontRenderer` again on 1.12.2, where `mcDataDir` became `gameDir` and `IChatComponent` became
+`ITextComponent`). Code you want on several versions needs the [multi-version setup](multi-version.md).
 
 ## Where the design lives
 
@@ -85,4 +86,4 @@ what DOCS.md decides; if the two ever disagree, DOCS.md and the code win, and th
 The examples in the repository are real, built, and exercised by the project:
 
 - `test/testmod`: a 1.8.9 mod that touches every part of the loader (entrypoints, hooks, a Mixin, a widener).
-- `test/multimod`: one jar for 1.7.10 and 1.8.9.
+- `test/multimod`: one jar for 1.7.10, 1.8.9 and 1.12.2 (on 1.12.2 it listens to every event of every hook).

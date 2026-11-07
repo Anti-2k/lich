@@ -1,0 +1,33 @@
+{
+  "_comment": "Forge ${forge} for 1.12.2 in Mojang launcher format, as Forge's installer writes it (libraries from Forge's version.json, the same in every 14.23.5.28xx build but the Forge jar). Lich's installer fills in the build and writes it for devlaunch; Lich never ships Forge itself.",
+  "id": "forge-1.12.2",
+  "inheritsFrom": "1.12.2",
+  "type": "release",
+  "mainClass": "net.minecraft.launchwrapper.Launch",
+  "logging": {},
+  "minecraftArguments": "--username ${auth_player_name} --version ${version_name} --gameDir ${game_directory} --assetsDir ${assets_root} --assetIndex ${assets_index_name} --uuid ${auth_uuid} --accessToken ${auth_access_token} --userType ${user_type} --tweakClass net.minecraftforge.fml.common.launcher.FMLTweaker --versionType Forge",
+  "libraries": [
+    { "name": "net.minecraftforge:forge:1.12.2-${forge}:universal", "url": "https://maven.minecraftforge.net/" },
+    { "name": "org.ow2.asm:asm-debug-all:5.2", "url": "https://maven.minecraftforge.net/" },
+    { "name": "net.minecraft:launchwrapper:1.12" },
+    { "name": "org.jline:jline:3.5.1", "url": "https://maven.minecraftforge.net/" },
+    { "name": "com.typesafe.akka:akka-actor_2.11:2.3.3", "url": "https://maven.minecraftforge.net/" },
+    { "name": "com.typesafe:config:1.2.1", "url": "https://maven.minecraftforge.net/" },
+    { "name": "org.scala-lang:scala-actors-migration_2.11:1.1.0", "url": "https://maven.minecraftforge.net/" },
+    { "name": "org.scala-lang:scala-compiler:2.11.1", "url": "https://maven.minecraftforge.net/" },
+    { "name": "org.scala-lang.plugins:scala-continuations-library_2.11:1.0.2_mc", "url": "https://maven.minecraftforge.net/" },
+    { "name": "org.scala-lang.plugins:scala-continuations-plugin_2.11.1:1.0.2_mc", "url": "https://maven.minecraftforge.net/" },
+    { "name": "org.scala-lang:scala-library:2.11.1", "url": "https://maven.minecraftforge.net/" },
+    { "name": "org.scala-lang:scala-parser-combinators_2.11:1.0.1", "url": "https://maven.minecraftforge.net/" },
+    { "name": "org.scala-lang:scala-reflect:2.11.1", "url": "https://maven.minecraftforge.net/" },
+    { "name": "org.scala-lang:scala-swing_2.11:1.0.1", "url": "https://maven.minecraftforge.net/" },
+    { "name": "org.scala-lang:scala-xml_2.11:1.0.2", "url": "https://maven.minecraftforge.net/" },
+    { "name": "lzma:lzma:0.0.1" },
+    { "name": "java3d:vecmath:1.5.2" },
+    { "name": "net.sf.trove4j:trove4j:3.0.3" },
+    { "name": "org.apache.maven:maven-artifact:3.5.3", "url": "https://maven.minecraftforge.net/" },
+    { "name": "net.sf.jopt-simple:jopt-simple:5.0.3" },
+    { "name": "org.apache.logging.log4j:log4j-api:2.15.0", "url": "https://maven.minecraftforge.net/" },
+    { "name": "org.apache.logging.log4j:log4j-core:2.15.0", "url": "https://maven.minecraftforge.net/" }
+  ]
+}

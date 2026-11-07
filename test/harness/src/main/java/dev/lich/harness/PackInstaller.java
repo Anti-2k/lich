@@ -80,6 +80,20 @@ final class PackInstaller {
 
     /** The pack's first-launch answers (see {@link Pack}). */
     private static void setUp(Pack pack, Target target) throws IOException {
+        for (String file : pack.remove()) {
+            // A name that no longer matches must not quietly leave the file in.
+            if (!Files.deleteIfExists(Paths.inside(target.template, file))) {
+                throw new IOException("Setup: no " + file + " to remove");
+            }
+            target.manifest.remove(file);
+            log("Setup: removed " + file);
+        }
+        List<Download> downloads = new ArrayList<>();
+        pack.download().forEach((path, file) -> downloads.add(new Download(path, file.url(), Http.Hash.sha512(file.sha512()))));
+        if (!downloads.isEmpty()) {
+            target.downloadAll(downloads);
+            downloads.forEach(d -> log("Setup: downloaded " + d.path()));
+        }
         for (String archive : pack.unzip()) {
             target.unzip(Paths.inside(target.template, archive), "", "", "setup: unzipped from " + archive);
             log("Setup: unpacked " + archive);

@@ -55,4 +55,18 @@ public final class LichSources {
         }
         return kept.size() == files.length ? files : kept.toArray(new File[0]);
     }
+
+    /** {@link #withoutLichMods(File[])} for a list (FML 1.12.2's {@code LibraryManager.gatherLegacyCanidates}). */
+    public static List<File> withoutLichMods(List<File> files) {
+        if (files == null || HIDDEN_MOD_FILES.isEmpty()) {
+            return files;
+        }
+        List<File> kept = new ArrayList<>(files.size());
+        for (File file : files) {
+            if (file == null || !HIDDEN_MOD_FILES.contains(file.getAbsoluteFile())) {
+                kept.add(file);
+            }
+        }
+        return kept.size() == files.size() ? files : kept;
+    }
 }

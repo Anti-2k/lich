@@ -1,6 +1,6 @@
 # Several Minecraft versions in one jar
 
-One jar can run on **1.7.10 and 1.8.9**. It is built once with the `dev.lich.mod` plugin's multi-version mode, and
+One jar can run on **1.7.10, 1.8.9 and 1.12.2**. It is built once with the `dev.lich.mod` plugin's multi-version mode, and
 Lich picks the right parts at launch. The example is `test/multimod`; read it next to this page.
 
 ## When to do it
@@ -11,7 +11,7 @@ runs on each:
 - code that only uses `dev.lich.api` (the version-neutral API, with no game types), or
 - code that uses game members whose **SRG names are the same** on both versions.
 
-Many names did change between 1.7.10 and 1.8 (1.8 introduced `BlockPos`, block states and the new renderer). The
+Many names did change between 1.7.10 and 1.8 (1.8 introduced `BlockPos`, block states and the new renderer), and again by 1.12 (`ITextComponent`, `RayTraceResult`, `EnumHand`, `Minecraft.player`). The
 same MCP name does not even guarantee the same SRG name: `ModelBiped.bipedHeadwear` is `field_78114_d` on 1.7.10 and
 `field_178720_f` on 1.8.9. The build checks all of this for you (see [the check](#the-check)); you do not have to know.
 
@@ -141,6 +141,11 @@ move that into each version's src/mc<version>/java, in a package of its own. ...
 Fixing it: find the call in that class that has a different SRG name or does not exist on one version, and move the
 code that makes it into the per-version source sets, behind an interface or a static helper both versions implement.
 The shared class then only calls your own code.
+
+The game's own libraries differ between versions too, and javac picks overloads from them. The common trap is
+logging: 1.12.2 ships log4j 2.8.1, whose `info(String, Object)` and `info(String, Object, Object)` overloads do not
+exist in the 2.0-beta9 that 1.7.10 and 1.8.9 ship, so `LOG.info("x {}", value)` in a shared class compiles to
+different methods and fails the check. Build one string (`LOG.info("x " + value)`) in shared code.
 
 A common shape (this is what `multimod` does):
 

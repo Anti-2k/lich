@@ -13,25 +13,44 @@ enum Profile {
     FORGE;
 
     static final String FML_1_7_10 = "cpw.mods.fml.common.launcher.FMLTweaker";
-    static final String FML_1_8_9 = "net.minecraftforge.fml.common.launcher.FMLTweaker"; // and 1.12.2
+    /** FML's tweaker in 1.8.9 and in 1.12.2: the same class name. */
+    static final String FML_1_8_9 = "net.minecraftforge.fml.common.launcher.FMLTweaker";
     private static final Set<String> FML_TWEAKERS = Set.of(FML_1_7_10, FML_1_8_9);
 
     /**
-     * The Minecraft version: from FML's tweaker (its package differs between 1.7.10 and 1.8.9) or, without
-     * Forge, from MCP's mappings ({@code mcp-<version>-srg.zip}); {@code null} if neither tells.
+     * The Minecraft version. MCP's mappings ({@code mcp-<version>-srg.zip}) name it exactly, Forge or not. Without
+     * them: FML's tweaker for 1.7.10 (its package differs), and for the one that 1.8.9 and 1.12.2 share, the
+     * asset index the launcher passes ({@code 1.8} or {@code 1.12}); {@code null} if nothing tells.
      */
-    static String minecraftVersion(List<String> tweakClasses, List<Path> mappings) {
+    static String minecraftVersion(List<String> tweakClasses, List<Path> mappings, String[] args) {
+        if (!mappings.isEmpty()) {
+            String name = mappings.getFirst().getFileName().toString();
+            return name.substring("mcp-".length(), name.length() - "-srg.zip".length());
+        }
         if (tweakClasses.contains(FML_1_7_10)) {
             return "1.7.10";
         }
         if (tweakClasses.contains(FML_1_8_9)) {
-            return "1.8.9";
+            return switch (assetIndex(args)) {
+                case "1.12" -> "1.12.2";
+                case "1.8" -> "1.8.9";
+                // A launcher that doesn't pass the index: the older of the two, as before 1.12.2 was supported.
+                default -> "1.8.9";
+            };
         }
-        if (mappings.isEmpty()) {
-            return null;
+        return null;
+    }
+
+    /** The {@code --assetIndex} launch argument, in either spelling; the empty string without one. */
+    static String assetIndex(String[] args) {
+        for (int i = 0; i < args.length; i++) {
+            if (args[i].equals("--assetIndex") && i + 1 < args.length) {
+                return args[i + 1];
+            } else if (args[i].startsWith("--assetIndex=")) {
+                return args[i].substring("--assetIndex=".length());
+            }
         }
-        String name = mappings.getFirst().getFileName().toString();
-        return name.substring("mcp-".length(), name.length() - "-srg.zip".length());
+        return "";
     }
 
     static Profile detect(List<String> tweakClasses) {

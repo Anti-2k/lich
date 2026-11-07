@@ -20,6 +20,8 @@ public final class AsmCompat {
                 .renamePackage("org/spongepowered/asm/lib/", "org/objectweb/asm/", MixinShadedAsm::isTooOld)
                 .patch(ShadedAsmClassReader.CLASS, new ShadedAsmClassReader())
                 .patch(ShadedAsmOpcodes.CLASS, new ShadedAsmOpcodes())
+                .patch(ForgeEventWrappers.CLASS, new ForgeEventWrappers())
+                .patch(ForgeEventWrappers.CLASS_1710, new ForgeEventWrappers())
                 .redirect("org/objectweb/asm/Type", "getType", "(Ljava/lang/String;)Lorg/objectweb/asm/Type;",
                         SHIMS + "Asm5Types")
                 .redirect("org/objectweb/asm/Type", "getReturnType", "(Ljava/lang/String;)Lorg/objectweb/asm/Type;",
@@ -30,6 +32,11 @@ public final class AsmCompat {
                 // Compressed frames in a Java 5 class: ASM 5 wrote them (the JVM ignores them there), ASM 9 throws.
                 .redirect("org/objectweb/asm/MethodVisitor", "visitFrame", "(II[Ljava/lang/Object;I[Ljava/lang/Object;)V",
                         SHIMS + "Asm5Frames")
+                // ... unless the writer only lacks its class header yet (a coremod adding a method before accept).
+                .replaceInstantiations("org/objectweb/asm/ClassWriter", SHIMS + "Asm5ClassWriter")
+                .redirect("org/objectweb/asm/ClassWriter", "visitMethod",
+                        "(ILjava/lang/String;Ljava/lang/String;Ljava/lang/String;[Ljava/lang/String;)Lorg/objectweb/asm/MethodVisitor;",
+                        SHIMS + "Asm5ClassWriter")
                 // Visitors written for ASM 5 (FML's mod discovery, its deobfuscation, mods' transformers, Mixin
                 // 0.7) throw on Java 11+ class files, whose nest, record and permitted-subclass attributes need
                 // a newer API level. For ASM 5-level code, a higher level only adds those callbacks, whose
@@ -37,6 +44,8 @@ public final class AsmCompat {
                 // alone: ASM routes its method calls differently.
                 .replaceIntConstant(Opcodes.ASM5, Opcodes.ASM9, "org/objectweb/asm/",
                         "raised the ASM API level from 5 to 9")
+                // ASM 6+ throws for lambdas reaching an ASM 4-level visitor (see Asm5MethodVisitor).
+                .rebase("org/objectweb/asm/MethodVisitor", SHIMS + "Asm5MethodVisitor")
                 // ASM 6+ throws when a subclass calls one of these constructors without an API version.
                 .rebase("org/objectweb/asm/tree/analysis/BasicInterpreter", SHIMS + "Asm5BasicInterpreter")
                 .rebase("org/objectweb/asm/tree/analysis/BasicVerifier", SHIMS + "Asm5BasicVerifier")

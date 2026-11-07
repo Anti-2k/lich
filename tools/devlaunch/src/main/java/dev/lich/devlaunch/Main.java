@@ -129,7 +129,8 @@ public final class Main {
         Map<String, String> variables = new HashMap<>();
         variables.put("auth_player_name", options.username());
         variables.put("auth_uuid", uuid.toString().replace("-", ""));
-        variables.put("auth_access_token", "0");
+        // "0" like an offline launch; DEVLAUNCH_ACCESS_TOKEN stands in for a real token, to test that Lich keeps it out of logs.
+        variables.put("auth_access_token", System.getenv().getOrDefault("DEVLAUNCH_ACCESS_TOKEN", "0"));
         variables.put("auth_session", "-");
         variables.put("auth_xuid", "0");
         variables.put("clientid", "0");

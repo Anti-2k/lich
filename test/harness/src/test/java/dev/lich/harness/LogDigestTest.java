@@ -43,6 +43,20 @@ class LogDigestTest {
     }
 
     @Test
+    void forgesLayoutWithTheLoggersNameDigestsLikeMojangs() {
+        LogDigest forge = LogDigest.parse(List.of("[10:00:01] [Client thread/WARN] [FML]: Boom",
+                "[10:00:02] [Client thread/INFO] [FML]: Forge Mod Loader has successfully loaded 183 mods",
+                "[10:00:03] [main/INFO] [mixin]: Mixing MixinFoo from mixins.foo.json into net.minecraft.client.Minecraft",
+                "[10:00:04] [Lich harness driver/ERROR] [LichHarness]: LICH-HARNESS fail tour -- x"), GAME);
+        LogDigest lich = LogDigest.parse(List.of("[10:00:01] [Client thread/WARN]: Boom",
+                "[10:00:02] [Client thread/INFO]: Forge Mod Loader has successfully loaded 183 mods",
+                "[10:00:03] [main/INFO]: Mixing MixinFoo from mixins.foo.json into net.minecraft.client.Minecraft",
+                "[10:00:04] [Lich harness driver/ERROR]: LICH-HARNESS fail tour -- x"), GAME);
+        assertEquals(lich, forge);
+        assertEquals(1, forge.problemCount());
+    }
+
+    @Test
     void anOutOfMemoryErrorAnywhereIsNoticed() {
         LogDigest digest = LogDigest.parse(List.of("[10:00:01] [Server thread/ERROR]: Encountered an unexpected exception",
                 "java.lang.OutOfMemoryError: Java heap space"), GAME);

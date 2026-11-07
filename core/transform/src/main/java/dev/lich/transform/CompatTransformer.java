@@ -1,8 +1,10 @@
 package dev.lich.transform;
 
 import org.objectweb.asm.ClassReader;
+import org.objectweb.asm.ClassVisitor;
 import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.Handle;
+import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
 import org.objectweb.asm.commons.ClassRemapper;
@@ -23,6 +25,7 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -175,6 +178,18 @@ public final class CompatTransformer {
     private record RedirectSpec(Member member, String target, List<String> markers) {
     }
 
+    /** A patch for any class that contains every one of {@code needles}. */
+    private record GatedPatch(List<byte[]> needles, ClassPatch patch) {
+        boolean foundIn(byte[] bytes) {
+            for (byte[] needle : needles) {
+                if (indexOf(bytes, needle) < 0) {
+                    return false;
+                }
+            }
+            return true;
+        }
+    }
+
     private record ArgumentFilterSpec(Member member, String filterOwner, String filterName) {
     }
 
@@ -219,6 +234,7 @@ public final class CompatTransformer {
     private final List<Redirect> argumentFilters;
     private final Predicate<String> interfaces;
     private final Map<String, List<ClassPatch>> patches;
+    private final List<GatedPatch> gatedPatches;
     private final Listener listener;
     private final Set<String> reported = ConcurrentHashMap.newKeySet();
 
@@ -269,6 +285,7 @@ public final class CompatTransformer {
         Map<String, List<ClassPatch>> patches = new HashMap<>();
         builder.patches.forEach((name, list) -> patches.put(name, List.copyOf(list)));
         this.patches = Map.copyOf(patches);
+        this.gatedPatches = List.copyOf(builder.gatedPatches);
         this.listener = builder.listener;
     }
 
@@ -358,7 +375,12 @@ public final class CompatTransformer {
             }
         }
         boolean handles = interfaces != null && indexOf(bytes, LAMBDA_METAFACTORY) >= 0;
-        List<ClassPatch> classPatches = patches.getOrDefault(name, List.of());
+        List<ClassPatch> classPatches = new ArrayList<>(patches.getOrDefault(name, List.of()));
+        for (GatedPatch gated : gatedPatches) {
+            if (gated.foundIn(bytes)) {
+                classPatches.add(gated.patch());
+            }
+        }
         if (renames.isEmpty() && packages.isEmpty() && strings.isEmpty() && calls.isEmpty() && tables.isEmpty()
                 && filters.isEmpty()
                 && rebaseCandidates.isEmpty() && instantiationCandidates.isEmpty() && constantCandidates.isEmpty()
@@ -371,7 +393,8 @@ public final class CompatTransformer {
         boolean changed = false;
         if (!renames.isEmpty() || !packages.isEmpty()) {
             // Counted as a change even if the name only matched inside a string: rewriting is harmless.
-            reader.accept(new ClassRemapper(node, new Renamer(renames, packages)), 0);
+            Renamer renamer = new Renamer(renames, packages);
+            reader.accept(withoutCollisions(name, reader, renamer, new ClassRemapper(node, renamer)), 0);
             changed = true;
             if (!renames.isEmpty()) {
                 listener.changed(name, "renamed removed JDK types " + renames.keySet());
@@ -407,6 +430,37 @@ public final class CompatTransformer {
         return writer.toByteArray();
     }
 
+    /**
+     * Leaves out a method that a rename would make identical to another one. A mod written for both Mixin's shaded ASM
+     * and plain ASM declares its plugin's {@code preApply} for each (Sledgehammer), which is legal until the shaded
+     * type is renamed to the plain one: the JVM then rejects the class. Callers only know the plain ASM here, so the
+     * method already written against it stays. The other may even delegate to it, and would call itself once renamed.
+     */
+    private ClassVisitor withoutCollisions(String className, ClassReader reader, Renamer renamer, ClassVisitor next) {
+        Set<String> unrenamed = new HashSet<>();
+        reader.accept(new ClassVisitor(Opcodes.ASM9) {
+            @Override
+            public MethodVisitor visitMethod(int access, String method, String descriptor, String signature, String[] exceptions) {
+                if (renamer.mapMethodDesc(descriptor).equals(descriptor)) {
+                    unrenamed.add(method + descriptor);
+                }
+                return null;
+            }
+        }, ClassReader.SKIP_CODE | ClassReader.SKIP_DEBUG | ClassReader.SKIP_FRAMES);
+        Set<String> renamed = new HashSet<>();
+        return new ClassVisitor(Opcodes.ASM9, next) {
+            @Override
+            public MethodVisitor visitMethod(int access, String method, String descriptor, String signature, String[] exceptions) {
+                String target = renamer.mapMethodDesc(descriptor);
+                if (!target.equals(descriptor) && (unrenamed.contains(method + target) || !renamed.add(method + target))) {
+                    listener.changed(className, "left out " + method + descriptor + ": the rename would duplicate " + method + target);
+                    return null;
+                }
+                return super.visitMethod(access, method, descriptor, signature, exceptions);
+            }
+        };
+    }
+
     private boolean renameStrings(String className, ClassNode node, Map<String, String> strings) {
         if (strings.isEmpty()) {
             return false;
@@ -438,7 +492,8 @@ public final class CompatTransformer {
                 if (target == null) {
                     continue;
                 }
-                listener.changed(className, "redirected " + call.owner + "." + call.name + " to " + target.owner());
+                // Once per namespace: some redirects (Class.getDeclaredField) apply in every class.
+                reportOncePerNamespace(className, "redirected " + call.owner + "." + call.name + " to " + target.owner());
                 retarget(call, target);
                 changed = true;
             }
@@ -786,6 +841,7 @@ public final class CompatTransformer {
         private final List<CallTable> callTables = new ArrayList<>();
         private final List<ArgumentFilterSpec> argumentFilters = new ArrayList<>();
         private final Map<String, List<ClassPatch>> patches = new HashMap<>();
+        private final List<GatedPatch> gatedPatches = new ArrayList<>();
         private Listener listener = (className, what) -> {
         };
 
@@ -835,6 +891,20 @@ public final class CompatTransformer {
          */
         public Builder redirect(String owner, String name, String descriptor, String target, String... markers) {
             redirects.add(new RedirectSpec(new Member(owner, name, descriptor), target, List.of(markers)));
+            return this;
+        }
+
+        /**
+         * Applies {@code patch} to every class that contains each of {@code needles} (in its constant pool). A class the
+         * patch leaves alone keeps its bytes, which matters: patchers such as XU2-Patcher checksum a mod's class before
+         * they patch it, after this pass.
+         */
+        public Builder patchWhere(ClassPatch patch, String... needles) {
+            List<byte[]> bytes = new ArrayList<>();
+            for (String needle : needles) {
+                bytes.add(needle.getBytes(StandardCharsets.UTF_8));
+            }
+            gatedPatches.add(new GatedPatch(List.copyOf(bytes), patch));
             return this;
         }
 

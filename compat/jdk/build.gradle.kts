@@ -7,6 +7,8 @@ dependencies {
     implementation(project(":transform"))
     // Only so tests can pack a jar to unpack; at runtime the nested copy below is used.
     testImplementation(libs.commons.compress)
+    // The Nashorn Lich ships, on the class path as in the game: ScriptEnginesTest finds it.
+    testRuntimeOnly(libs.nashorn.core)
 }
 
 // The game's commons-lang3, to test the patch to its JavaVersion on the real class. Kept off the test

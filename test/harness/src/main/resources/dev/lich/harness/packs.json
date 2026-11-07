@@ -1,305 +1,185 @@
 {
-  "lost-era": {
-    "name": "The Lost Era 1.6.10",
-    "mc": "1.7.10",
-    "forge": "10.13.4.1614",
+  "parasites-reloaded": {
+    "name": "Parasites: Reloaded 1.3.0",
+    "mc": "1.12.2",
+    "forge": "14.23.5.2860",
     "source": {
       "type": "mrpack",
-      "url": "https://cdn.modrinth.com/data/p87Jiw2q/versions/OdtinaRg/LostEra_Modpack-1.6.10.mrpack",
-      "sha512": "ff14ee19164cef6d7eb6d150aa6c319d6baea7a1928b389b8d0d9e72df947a7313645f28d61032e2a0b675d4c9f676c716fc77d24ddeb3674674cbeda266c4ee"
+      "url": "https://cdn.modrinth.com/data/ougHSXcz/versions/A3ktvMQw/Parasites%20Reloaded%201.1.0.mrpack",
+      "sha512": "b34b3480b63c0ec4afdfd094b7ce926456d378a8d017fc9dc8f247bf24efdfb76e08ce2f3870d1f5734a83a4922a2a49d11d15cad0712cf40410d02f8f49dd8d"
+    },
+    "memoryMb": 4096
+  },
+  "optimized-fps": {
+    "name": "Optimized fps 1.5.6",
+    "mc": "1.12.2",
+    "forge": "14.23.5.2860",
+    "source": {
+      "type": "mrpack",
+      "url": "https://cdn.modrinth.com/data/aOOJ2mte/versions/ev81DQmR/Optimized%20fps%201.12.2%201.5.6.mrpack",
+      "sha512": "e8eeac30724fa31caa9e404b71f28b4749c6c2d2f527843909ec9a98371d91d757e63e231a00c36fd24bfda2dfdb14ad81120dcd48489e7715d7e92af7d9ede2"
+    },
+    "memoryMb": 4096
+  },
+  "superheroes": {
+    "name": "SuperHeroes 1.0.0",
+    "mc": "1.12.2",
+    "forge": "14.23.5.2860",
+    "source": {
+      "type": "mrpack",
+      "url": "https://cdn.modrinth.com/data/m2PsjPTL/versions/5pMS8879/SuperHeroes%201.0.0.mrpack",
+      "sha512": "24e6ef68e1aaeb7ad287297448ed5433358a91ea5eefed85574447aeff708dcd3ab9bb527bbc863c3f108fbb4b66b14e6d20bbd72bce99a4e705bf6e46769681"
+    },
+    "memoryMb": 4096
+  },
+  "glitchs-modern-warfare": {
+    "name": "glitch's modern warfare 2.0.0",
+    "mc": "1.12.2",
+    "forge": "14.23.5.2860",
+    "source": {
+      "type": "mrpack",
+      "url": "https://cdn.modrinth.com/data/olXhZC8X/versions/rIevG9QL/glitch%27s%20modern%20warfare%202.0.0.mrpack",
+      "sha512": "fec335c84ba3ee3257c03545a623a0fbed3290a8da092522cdd73e064d9d6e0fcc718b53339de2a86103086c5d5a6d3aa3affed246a5163999026c0bb7cc76bf"
+    },
+    "setup": {
+      "remove": ["mods/MCglTF-1.12.2-Forge-2.0.3.0.jar"],
+      "download": {
+        "mods/MCglTF-1.12.2-Forge-2.0.3.0.jar": {
+          "url": "https://cdn.modrinth.com/data/jnZgACca/versions/SCpPaz39/MCglTF-1.12.2-Forge-2.0.3.0.jar",
+          "sha512": "cd264912811bcbd8c18eee8d6a51b26cdbd354c3d6e05ed599d09013309fc1f4be3d5f202f839fa7ff496323e7a10bff395c9d1b146d86986860ff645b131f65"
+        }
+      },
+      "why": "the pack's MCglTF jar is a byte-identical copy of modularwarfare-2.4.2f.jar under MCglTF's name, so FML stops on the duplicate mod id and ModularWarfare lacks the MCglTF it requires, on Forge too. The real MCglTF 2.0.3.0 (Modrinth) takes its place"
+    },
+    "memoryMb": 4096
+  },
+  "spacecraft": {
+    "name": "Space Craft (Galacticraft) 10.2",
+    "mc": "1.12.2",
+    "forge": "14.23.5.2864",
+    "source": {
+      "type": "mrpack",
+      "url": "https://cdn.modrinth.com/data/4PMPWH1j/versions/881Pxyk9/Space%20Craft%20%28Galacticraft%29%2010.2.mrpack",
+      "sha512": "9f8245aad4dcb6d52f0966e9f1aea1425e6134aee58556c70bae6a27ba18aa68bbf7bd1353677b6e21255d32cb3b1ea52d2ba87ba5d8dd7565ee82032e9f3eab"
+    },
+    "memoryMb": 5120
+  },
+  "nanomagic": {
+    "name": "NanoMagic 1.1.8",
+    "mc": "1.12.2",
+    "forge": "14.23.5.2864",
+    "source": {
+      "type": "mrpack",
+      "url": "https://cdn.modrinth.com/data/UTAqzFBX/versions/q6rpIMT6/NanoMagic%201.1.8.mrpack",
+      "sha512": "d2f743fca561d18e055bfd7bd0cae9ad268387edb4675e3d6e011be7b4bff9f95cfa81dd0164c7d6ecd6d8a90266cd41c9d0ebecc1aaa260a3dcc4de9ba9fa8f"
     },
     "memoryMb": 6144,
-    "worldType": "RTG"
+    "noServer": "can't read a vanilla server's packets, on Forge too (DecoderException reading past a packet's end): RoughlyEnoughIDs and AE2 Extended Life change the item and id encoding",
+    "skip": "crashes on Forge too in the creative search tab: a Tinkers' Part Builder textured with Swampland's rotten log bark, whose MCreator getStateFromMeta asks for facing=down on a horizontal-only block"
   },
-  "blightfall": {
-    "name": "Blightfall 3.1.1-CE",
-    "mc": "1.7.10",
-    "forge": "10.13.4.1614",
-    "source": {
-      "type": "solder",
-      "api": "https://solder.technicpack.net/api/",
-      "slug": "blightfall",
-      "build": "3.1.1-CE"
-    },
-    "memoryMb": 4096,
-    "setup": {
-      "copy": {
-        "saves/Blightfall": "flans"
-      }
-    },
-    "save": "Blightfall"
-  },
-  "the-1710-pack": {
-    "name": "The 1.7.10 Pack 0.10.15",
-    "mc": "1.7.10",
-    "forge": "10.13.4.1614",
-    "source": {
-      "type": "solder",
-      "api": "https://solder.technicpack.net/api/",
-      "slug": "the-1710-pack",
-      "build": "0.10.15"
-    },
-    "memoryMb": 4096
-  },
-  "ftb-infinity-evolved": {
-    "name": "FTB Infinity Evolved 3.1.0",
-    "mc": "1.7.10",
-    "forge": "10.13.4.1614",
+  "rlcraft": {
+    "name": "RLCraft 2.9.3",
+    "mc": "1.12.2",
+    "forge": "14.23.5.2860",
     "source": {
       "type": "ftb",
-      "pack": "23",
-      "version": "99"
+      "namespace": "curseforge",
+      "pack": "285109",
+      "version": "4612979"
     },
-    "memoryMb": 4096
+    "memoryMb": 6144,
+    "skip": "its Recurrent Complex 1.4.8.4 jar is malformed: its shadow package sits at ivorius/reccomplex//shadow and 1258 class references say \"//\", which Java 8 tolerated and Java 25 rejects (ClassFormatError), so it fails to load there with or without Lich"
   },
-  "ftb-skyfactory-2.5": {
-    "name": "FTB Presents SkyFactory 2.5.8",
-    "mc": "1.7.10",
-    "forge": "10.13.4.1614",
+  "enigmatica-2-expert": {
+    "name": "Enigmatica 2: Expert 1.93a",
+    "mc": "1.12.2",
+    "forge": "14.23.5.2860",
     "source": {
       "type": "ftb",
-      "pack": "19",
-      "version": "97"
+      "namespace": "curseforge",
+      "pack": "282744",
+      "version": "9088147"
     },
-    "memoryMb": 4096
-  },
-  "skyblock-enhanced": {
-    "name": "SkyBlock Enhanced 2.3.21",
-    "mc": "1.8.9",
-    "forge": "11.15.1.2318",
-    "source": {
-      "type": "mrpack",
-      "url": "https://cdn.modrinth.com/data/9JTbeXjU/versions/zG48O4Km/SkyBlock%20Enhanced-2.3.21.mrpack",
-      "sha512": "19bc18020c09cb1e10a0711fb90c08f5379b34011bf6578251271cff01ed7bc80770cf37a9f755ae115f4970f0e4efa2cf2f1a353de24aceaa50e1d015b79f51"
-    },
-    "memoryMb": 4096,
     "setup": {
-      "unzip": ["Skyblock Enhanced/OfficialConfigs/Normal 1080p Configs.zip"],
-      "write": {
-        "config/PackCore.json": "{\n  \"PromptSetDefaultConfig\": false,\n  \"ShowOptifineGuide\": true,\n  \"EnableCustomMenu\": true\n}\n"
-      }
-    }
-  },
-  "bedwars-plus": {
-    "name": "BedWars+ v1.5.0-r",
-    "mc": "1.8.9",
-    "forge": "11.15.1.2318",
-    "source": {
-      "type": "mrpack",
-      "url": "https://cdn.modrinth.com/data/TqN4Acfn/versions/SHQpGxmB/BedWars%2B%20v1.5.0-r.mrpack",
-      "sha512": "d1bcc366b9b4507c7e2f7f51f8aa07aeca23e27bd2dcb149ac9226ba38001568ee648cc255e158593b95bc108355c6ce1486d4deb0e60802a92925d5c831af14"
+      "remove": ["mods/!cleanroom-relauncher-1.1.4.jar"]
     },
-    "memoryMb": 3072
+    "memoryMb": 8192,
+    "skip": "a Cleanroom pack: its cleanroom-relauncher restarts the game on Cleanroom, and without it the Cleanroom-only builds of CodeChickenLib, Fugue and Scalar Legacy (Java 21 and 25 class files) don't load on Forge or Lich (DOCS.md §8). Kept for testing Cleanroom support later"
   },
-  "everest-client": {
-    "name": "Everest Client 2.0.4",
-    "mc": "1.8.9",
-    "forge": "11.15.1.2318",
+  "sevtech-ages": {
+    "name": "SevTech: Ages 3.2.3",
+    "mc": "1.12.2",
+    "forge": "14.23.5.2860",
     "source": {
-      "type": "mrpack",
-      "url": "https://cdn.modrinth.com/data/M8vElGcL/versions/63S4mOxL/Everest%20Client%202.0.4.mrpack",
-      "sha512": "2791a8dc573a178c4905b79628504b2df2bccda5ceded8d278593ba9cb509f18e7840daa4c3636c6671f191660099085830de4b698f45925b0ca5054eadfa8a7"
+      "type": "ftb",
+      "namespace": "curseforge",
+      "pack": "268208",
+      "version": "3569915"
     },
-    "memoryMb": 3072
+    "memoryMb": 8192
   },
-  "pvp-pack-1.8": {
-    "name": "1.8 PvP Pack v6-hotfix",
-    "mc": "1.8.9",
-    "forge": "11.15.1.2318",
+  "divine-journey-2": {
+    "name": "Divine Journey 2 2.23.4",
+    "mc": "1.12.2",
+    "forge": "14.23.5.2860",
     "source": {
-      "type": "mrpack",
-      "url": "https://cdn.modrinth.com/data/9C9Ggaka/versions/UmTbNCcZ/1.8%20PvP%20Pack%20Version%206%20-%20hotfix.mrpack",
-      "sha512": "ba0427cd9ebef4e0ef138e77ccb73c012eaa6b35ca2815e90c5c521b3e01adbe60ef14daffeeffd0b95d293207ad573814bea2ed701bf7b6b960103965363a22"
-    },
-    "memoryMb": 3072,
-    "tags": ["quick"]
-  },
-  "gt-new-horizons": {
-    "name": "GT New Horizons 2.8.4",
-    "mc": "1.7.10",
-    "forge": "10.13.4.1614",
-    "source": {
-      "type": "solder",
-      "api": "http://technicsolder.usrv.eu/api/",
-      "slug": "mcnewhorizons",
-      "build": "2.8.4"
+      "type": "ftb",
+      "namespace": "curseforge",
+      "pack": "370666",
+      "version": "8203808"
     },
     "memoryMb": 6144
   },
-  "fiskheroes": {
-    "name": "Official FiskHeroes Server 1.0.3",
-    "mc": "1.7.10",
-    "forge": "10.13.4.1614",
-    "source": {
-      "type": "mrpack",
-      "url": "https://cdn.modrinth.com/data/tBsrANHA/versions/hXHMkg23/Official%20FiskHeroes%20Server%201.0.3.mrpack",
-      "sha512": "1d6dec5612f8d79a76e828f4f05b6d01b2363553562f4f65cff7aef209949e067b710a9503424de680db1411906080b1fa785e32d1f7d55217b1344bdb63ce4d"
-    },
-    "memoryMb": 4096
-  },
-  "hbm-automation": {
-    "name": "Automation Of HBM's Nuclear Tech beta 1.1.8",
-    "mc": "1.7.10",
-    "forge": "10.13.4.1614",
-    "source": {
-      "type": "mrpack",
-      "url": "https://cdn.modrinth.com/data/qBEuLzgI/versions/mkpBiNvZ/Automation%20Of%20HBM%27s%20Nuclear%20Tech%20beta%201.1.8.mrpack",
-      "sha512": "f32fcbcdcb198fa3cd628f23d00cb476a930c4bf29e376c7185650688ed5063b3f87359a9dd5f4d8485dd05857387f73c9e3ee10ec09e6f1f4956f54657a8a25"
-    },
-    "memoryMb": 4096,
-    "tags": ["quick"]
-  },
-  "tekxit-2": {
-    "name": "Tekxit 2 v2.25ra2",
-    "mc": "1.7.10",
-    "forge": "10.13.4.1614",
-    "source": {
-      "type": "zip",
-      "url": "https://tekxit.b-cdn.net/downloads/tekxit2/Tekxit-2-Client-v2.25ra.zip",
-      "sha512": "ed2211f487ccaf1c17dc8db13144df359a6a46c358591847c30302e9021d07ec4e4639f95438804dfeb5c2106642f807f617f7574455decd386c21e333560e03",
-      "packForge": "10.13.4.1558"
-    },
-    "memoryMb": 4096
-  },
-  "dbc-apollo": {
-    "name": "Dragon Block Apollo 1.3.1 #20",
-    "mc": "1.7.10",
-    "forge": "10.13.4.1614",
-    "source": {
-      "type": "zip",
-      "url": "https://file.apollonetworkmc.net/Dragon-Block-C-Apollo.zip",
-      "sha512": "ab62054cec964abb79204e27e665d23c38078b6964aebb96d6b4aaad8b2eccfaad95aeca763ed1d9ac130d00cefddb2ff04da65acb3663ffcd695db07def9c46"
-    },
-    "memoryMb": 4096
-  },
-  "lotr-survival": {
-    "name": "LOTR Survival 8.6",
-    "mc": "1.7.10",
-    "forge": "10.13.4.1614",
-    "source": {
-      "type": "zip",
-      "url": "https://www.dropbox.com/scl/fi/2009cj2vs7hhbal4j4moc/lotrsurvival1.0.zip?rlkey=y6jz8pp40pl9ogvln8u5760c5&st=cgqtgq6d&dl=1",
-      "sha512": "88bd69ad838ade35cdeceeeca0d419602b00c5fca3ab82c81e58af16b1c8931ee59d58af84255e2e1d55d4e4a66802f863b162a041c97e82762a303759ab156b",
-      "packForge": "10.13.4.1558"
-    },
-    "memoryMb": 4096,
-    "tags": ["quick"]
-  },
-  "ultimate-warfare": {
-    "name": "Ultimate Warfare 1.7.10 #19",
-    "mc": "1.7.10",
-    "forge": "10.13.4.1614",
-    "source": {
-      "type": "zip",
-      "url": "https://www.dropbox.com/s/7t6ojjbhbbnbdhp/Ultimate%20Warfare%20Base%20Pack.zip?dl=1",
-      "sha512": "e2ad0ae9bcd4e5a79040ccd79d484dce89ea8a9194b886d83f6d6e7a90c03311ffe5a3cb61622d4af7f80dbd5317bb9af782d65bfa2e1595daeee64788d0c891"
-    },
-    "memoryMb": 4096,
-    "skip": "its mods download CodeChickenLib, ForgeMultipart and bspkrsCore at launch from hosts that are gone, and bspkrsCore opens an error dialog on the desktop"
-  },
-  "survival-industry": {
-    "name": "Survival Industry 1.7.0",
-    "mc": "1.7.10",
-    "forge": "10.13.4.1614",
-    "source": {
-      "type": "atlauncher",
-      "pack": "SurvivalIndustry",
-      "version": "1.7.0"
-    },
-    "memoryMb": 4096
-  },
-  "resonant-rise-3": {
-    "name": "Resonant Rise 3.4.0.3",
-    "mc": "1.7.10",
-    "forge": "10.13.4.1614",
-    "source": {
-      "type": "atlauncher",
-      "pack": "ResonantRise",
-      "version": "3.4.0.3"
-    },
-    "memoryMb": 4096
-  },
-  "ftb-daybreaker": {
-    "name": "FTB Horizons: Daybreaker 1.2.0",
-    "mc": "1.7.10",
-    "forge": "10.13.4.1614",
+  "roguelike-adventures-and-dungeons": {
+    "name": "Roguelike Adventures and Dungeons 1.56",
+    "mc": "1.12.2",
+    "forge": "14.23.5.2864",
     "source": {
       "type": "ftb",
-      "pack": "17",
-      "version": "109",
-      "packForge": "10.13.4.1448"
+      "namespace": "curseforge",
+      "pack": "289267",
+      "version": "8091170"
     },
-    "memoryMb": 4096
+    "memoryMb": 8192,
+    "noServer": "its client crashes leaving a vanilla server, on Forge too: packets for the world it just closed (an NPE on the world time, and 'Cannot load encyclopedia outside of a game')"
   },
-  "eldritch-revolution": {
-    "name": "Eldritch Revolution 3.20",
-    "mc": "1.8.9",
-    "forge": "11.15.1.2318",
+  "mc-eternal": {
+    "name": "MC Eternal 1.6.2.3",
+    "mc": "1.12.2",
+    "forge": "14.23.5.2860",
     "source": {
-      "type": "atlauncher",
-      "pack": "EldritchRevolution",
-      "version": "EldritchRevolution3.20.20161014",
-      "packForge": "11.15.1.1902"
+      "type": "ftb",
+      "namespace": "curseforge",
+      "pack": "349129",
+      "version": "5555417"
     },
-    "memoryMb": 3072,
-    "skip": "Thaumcraft's loader downloads Baubles at launch from a dead Dropbox link"
+    "memoryMb": 8192
   },
-  "solitarycraft-vanillaplus": {
-    "name": "SolitaryCraft VanillaPlus",
-    "mc": "1.8.9",
-    "forge": "11.15.1.2318",
+  "the-1122-pack": {
+    "name": "The 1.12.2 Pack: Perfectly Complex 1.6.6",
+    "mc": "1.12.2",
+    "forge": "14.23.5.2860",
     "source": {
-      "type": "atlauncher",
-      "pack": "SolitaryCraft",
-      "version": "VanillaPlus",
-      "packForge": "11.15.1.1736"
+      "type": "ftb",
+      "namespace": "curseforge",
+      "pack": "353156",
+      "version": "6419831"
     },
-    "memoryMb": 3072,
+    "memoryMb": 8192,
+    "noServer": "can't read a vanilla server's packets, on Forge too (\"VarInt too big\", then a crash on packets for the closed world): RoughlyEnoughIDs and AE2 Extended Life change the item and id encoding"
+  },
+  "compact-claustrophobia": {
+    "name": "Compact Claustrophobia 1.3.5.2",
+    "mc": "1.12.2",
+    "forge": "14.23.5.2859",
+    "source": {
+      "type": "ftb",
+      "namespace": "curseforge",
+      "pack": "352293",
+      "version": "3035319",
+      "packForge": "14.23.5.2847"
+    },
+    "memoryMb": 6144,
     "tags": ["quick"]
-  },
-  "all-lucky-block": {
-    "name": "Lucky Block Add On 1.8.9 1.5.1",
-    "mc": "1.8.9",
-    "forge": "11.15.1.2318",
-    "source": {
-      "type": "zip",
-      "url": "https://www.dropbox.com/s/kppyc3rnf1c0kt5/modpack.zip?dl=1",
-      "sha512": "e721f8203fb2ebc4ffa38b41b0f460a333e3cda714f2eda87852ba167b3ac4901059a3530ddd19f1cd0cdc63ac9aefeca17d9eed0774fd4a19c2b89f65a7e395",
-      "packForge": "11.15.1.1855"
-    },
-    "memoryMb": 3072
-  },
-  "cubesoft": {
-    "name": "CubeSoft Pack 1.0.0",
-    "mc": "1.8.9",
-    "forge": "11.15.1.2318",
-    "source": {
-      "type": "mrpack",
-      "url": "https://cdn.modrinth.com/data/t2q2VlTN/versions/wQhkS3cC/CubeSoft%20Pack-1.0.0.mrpack",
-      "sha512": "93bb72d97ad2fee4a22729ce91a38158db7a5ed4f478c381a42fb2b55f6f18665f781a339f5b752dbdb16662018a7ad7f42b438ab8e2e2d219e264ae7ac7d28c"
-    },
-    "memoryMb": 3072
-  },
-  "dunkirk-spirit": {
-    "name": "Dunkirk Spirit 1.0 (Client)",
-    "mc": "1.8.9",
-    "forge": "11.15.1.2318",
-    "source": {
-      "type": "mrpack",
-      "url": "https://cdn.modrinth.com/data/2dkEsdQw/versions/4HyXmvka/Dunkirk%20Spirit%28Client%29.mrpack",
-      "sha512": "a60c7b027d876ddc60b9cffbc4629690b96b005ba06b7f17584559acc25b8ee0bb298d3571207a2f4f4c4ded6513cb841d4a7a4ee1cd511a4318e7a698fb5732"
-    },
-    "memoryMb": 3072
-  },
-  "bountiful-redux": {
-    "name": "Bountiful Redux 1.4.0",
-    "mc": "1.8.9",
-    "forge": "11.15.1.2318",
-    "source": {
-      "type": "mrpack",
-      "url": "https://cdn.modrinth.com/data/TnHsGOoa/versions/Mk31SzMs/Bountiful%20Redux%201.4.0.mrpack",
-      "sha512": "f1f8cf9a3b700e3d9533b438e7ac367ac857a8b32423a728bf0969381cf621cf9bd8b3df73578ee1a06aead511c7d345959a6949c1b92595f756cce89130a4ab"
-    },
-    "memoryMb": 3072
   }
 }

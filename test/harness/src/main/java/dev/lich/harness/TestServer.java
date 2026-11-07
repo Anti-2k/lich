@@ -48,6 +48,7 @@ final class TestServer implements AutoCloseable {
         return switch (mc) {
             case "1.8.9" -> 25599;
             case "1.7.10" -> 25598;
+            case "1.12.2" -> 25597;
             default -> throw new IllegalArgumentException("No test server for " + mc);
         };
     }

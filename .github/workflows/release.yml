@@ -2,7 +2,7 @@
 # jar and its SHA-256. Write the notes (Install / What's new) on the draft and publish it by hand.
 #
 #   1. bump version= in gradle.properties (and mcdev/gradle.properties), commit
-#   2. git tag v0.3.2 && git push origin main v0.3.2
+#   2. git tag v0.4.1 && git push origin main v0.4.1
 name: release
 
 on:
@@ -11,7 +11,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Existing tag to (re)build a draft release for, e.g. v0.3.1"
+        description: "Existing tag to (re)build a draft release for, e.g. v0.4.0"
         required: true
 
 permissions:
@@ -75,7 +75,7 @@ jobs:
 
           1. Install Java 25 or newer (e.g. [Temurin](https://adoptium.net/)).
           2. Close Prism Launcher, then open \`lich-installer-$version.jar\` (double-click, or \`java -jar lich-installer-$version.jar\`).
-          3. Pick a new instance (1.8.9 or 1.7.10, with or without Forge) or one you already have, and press **Install**.
+          3. Pick a new instance (1.7.10, 1.8.9 or 1.12.2, with or without Forge) or one you already have, and press **Install**.
           4. Start Prism and launch it.
 
           Only Prism Launcher is supported for now. More in the [README](https://github.com/${{ github.repository }}#installing).

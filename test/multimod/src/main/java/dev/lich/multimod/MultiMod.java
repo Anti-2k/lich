@@ -15,7 +15,9 @@ public final class MultiMod implements ClientEntrypoint {
 
     @Override
     public void onClientReady() {
-        LOG.info("Lich multimod: shared entrypoint ran on Minecraft {} (game instance: {})", Lich.minecraftVersion(),
-                Minecraft.getMinecraft() != null);
+        // One string: log4j 2.8.1 (1.12.2) has fixed-arity info(String, Object, ...) overloads that 2.0-beta9
+        // (1.7.10, 1.8.9) lacks, so a call with arguments would compile to different methods on different versions.
+        LOG.info("Lich multimod: shared entrypoint ran on Minecraft " + Lich.minecraftVersion() + " (game instance: "
+                + (Minecraft.getMinecraft() != null) + ")");
     }
 }

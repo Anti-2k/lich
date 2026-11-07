@@ -66,7 +66,8 @@ class CompatTransformerTest {
         assertEquals("shim/SystemShims", call.owner);
         assertEquals("setSecurityManager", call.name);
         assertEquals("(Ljava/lang/SecurityManager;)V", call.desc);
-        assertEquals(List.of("test.Fml: redirected java/lang/System.setSecurityManager to shim/SystemShims"), changes);
+        assertEquals(List.of("test.Fml: redirected java/lang/System.setSecurityManager to shim/SystemShims (logged once for test.*)"),
+                changes);
     }
 
     @Test
@@ -91,6 +92,47 @@ class CompatTransformerTest {
         MethodInsnNode call = onlyCall(compat.transform("test.Patcher", bytes));
         assertEquals("shim/Pack200", call.owner);
         assertEquals("()Lshim/Pack200$Unpacker;", call.desc);
+    }
+
+    @Test
+    void aMethodTheRenameWouldDuplicateIsLeftOutForTheOneAlreadyWrittenAgainstTheTarget() {
+        String renamed = "(Lold/lib/tree/ClassNode;)V";
+        String target = "(Lnew/lib/tree/ClassNode;)V";
+        for (List<String> order : List.of(List.of(renamed, target), List.of(target, renamed))) {
+            ClassWriter writer = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+            writer.visit(Opcodes.V1_8, Opcodes.ACC_PUBLIC, "test/Plugin", null, "java/lang/Object", null);
+            for (String descriptor : order) {
+                MethodVisitor mv = writer.visitMethod(Opcodes.ACC_PUBLIC, "preApply", descriptor, null, null);
+                mv.visitCode();
+                // The kept one is told apart by its body.
+                mv.visitLdcInsn(descriptor);
+                mv.visitInsn(Opcodes.POP);
+                mv.visitInsn(Opcodes.RETURN);
+                mv.visitMaxs(0, 0);
+                mv.visitEnd();
+            }
+            writer.visitEnd();
+            ClassNode node = read(compat.transform("test.Plugin", writer.toByteArray()));
+            assertEquals(1, node.methods.size(), "the JVM rejects a class with both");
+            assertEquals(target, node.methods.getFirst().desc);
+            assertEquals(target, ((LdcInsnNode) node.methods.getFirst().instructions.getFirst()).cst);
+        }
+    }
+
+    @Test
+    void overloadsTheRenameKeepsApartBothStay() {
+        ClassWriter writer = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+        writer.visit(Opcodes.V1_8, Opcodes.ACC_PUBLIC, "test/Plugin2", null, "java/lang/Object", null);
+        for (String descriptor : List.of("(Lold/lib/A;)V", "(Lold/lib/B;)V")) {
+            MethodVisitor mv = writer.visitMethod(Opcodes.ACC_PUBLIC, "preApply", descriptor, null, null);
+            mv.visitCode();
+            mv.visitInsn(Opcodes.RETURN);
+            mv.visitMaxs(0, 0);
+            mv.visitEnd();
+        }
+        writer.visitEnd();
+        ClassNode node = read(compat.transform("test.Plugin2", writer.toByteArray()));
+        assertEquals(List.of("(Lnew/lib/A;)V", "(Lnew/lib/B;)V"), node.methods.stream().map(m -> m.desc).toList());
     }
 
     @Test

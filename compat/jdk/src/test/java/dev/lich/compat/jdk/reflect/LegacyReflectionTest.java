@@ -17,6 +17,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * The reflective calls Forge's ObjectHolderRef and EnumHelper make, written as they are but with the
@@ -237,5 +238,39 @@ class LegacyReflectionTest {
         Tag wasteland = (Tag) accessor.newInstance(new Object[]{"WASTELAND", 2, subTags});
         assertEquals("WASTELAND", wasteland.name());
         assertSame(subTags, wasteland.subTags);
+    }
+
+    /** Set by {@link LateInit}'s static initializer: reading it can't start the initializer being watched. */
+    static final class Probe {
+        static volatile boolean initialized;
+    }
+
+    /** A holder class whose static initializer must not run until a field is first used. */
+    static final class LateInit {
+        static final Object BLOCK;
+
+        static {
+            Probe.initialized = true;
+            BLOCK = null;
+        }
+    }
+
+    /**
+     * ObjectHolderRef clears {@code final} while it scans classes whose static initializers need things that aren't
+     * registered yet (NuclearCraft's {@code NCBiomes}); Java 8 initialized the class at the first read or write.
+     */
+    @Test
+    void clearingFinalDoesNotInitializeTheClassButTheFirstAccessDoes() throws Exception {
+        Field block = LateInit.class.getDeclaredField("BLOCK");
+        block.setAccessible(true);
+        Field modifiersField = ReflectionShims.getDeclaredField(Field.class, "modifiers");
+        modifiersField.setAccessible(true);
+        ReflectionShims.setInt(modifiersField, block, block.getModifiers() & ~Modifier.FINAL);
+        assertFalse(Probe.initialized, "clearing final must leave the class alone");
+
+        Object value = new Object();
+        block.set(null, value);
+        assertTrue(Probe.initialized);
+        assertSame(value, block.get(null));
     }
 }

@@ -1,7 +1,6 @@
 package dev.lich.compat.asm;
 
 import org.objectweb.asm.ClassReader;
-import org.objectweb.asm.ClassWriter;
 
 /**
  * What {@code new ClassWriter(...)} in Forge 1.7.10 code creates under Lich (see {@link AsmCompat#registerFml1710}).
@@ -9,9 +8,10 @@ import org.objectweb.asm.ClassWriter;
  * frames ({@code getCommonSuperClass}) looked classes up through LaunchClassLoader: game classes, mod jars
  * and libraries that mods add at runtime (FalsePatternLib's downloads for GTNHLib and Hodgepodge). Lich
  * serves one ASM from the system class loader, which sees none of those, so this subclass looks them up
- * through the context class loader, which is LaunchClassLoader while the game runs.
+ * through the context class loader, which is LaunchClassLoader while the game runs. Otherwise it is
+ * {@link Asm5ClassWriter}, which every mod's writer is.
  */
-public class LaunchClassLoaderClassWriter extends ClassWriter {
+public class LaunchClassLoaderClassWriter extends Asm5ClassWriter {
     public LaunchClassLoaderClassWriter(int flags) {
         super(flags);
     }

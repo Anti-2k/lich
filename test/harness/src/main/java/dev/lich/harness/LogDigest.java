@@ -21,8 +21,10 @@ import java.util.regex.Pattern;
  */
 record LogDigest(Integer modsLoaded, Map<String, Integer> problems, List<String> mixins, Map<String, Integer> lichLines,
                  boolean outOfMemory) {
-    // Mojang's log4j layout for latest.log: "[12:34:56] [Client thread/WARN]: message".
-    private static final Pattern ENTRY = Pattern.compile("^\\[\\d\\d:\\d\\d:\\d\\d] \\[(.+?)/(TRACE|DEBUG|INFO|WARN|ERROR|FATAL)]: ?(.*)$");
+    // Mojang's log4j layout for latest.log: "[12:34:56] [Client thread/WARN]: message"; Forge 1.12's own config adds the
+    // logger's name, "[12:34:56] [Client thread/WARN] [FML]: message", which Lich's doesn't.
+    private static final Pattern ENTRY = Pattern.compile(
+            "^\\[\\d\\d:\\d\\d:\\d\\d] \\[(.+?)/(TRACE|DEBUG|INFO|WARN|ERROR|FATAL)](?: \\[[^]]*])?: ?(.*)$");
     private static final Pattern EXCEPTION = Pattern.compile("^(Caused by: )?[\\w$.]+(Exception|Error|Throwable)\\b.*");
     private static final Pattern MODS_LOADED = Pattern.compile("successfully loaded (\\d+) mods");
     private static final Pattern MIXING = Pattern.compile("Mixing (\\S+) from (\\S+) into (\\S+)");
