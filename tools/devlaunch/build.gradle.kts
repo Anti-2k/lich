@@ -13,7 +13,7 @@ application {
     mainClass = "dev.lich.devlaunch.Main"
 }
 
-// ./gradlew :devlaunch:runGame [-Plich.mc=1.8.9] [-Plich.profile=vanilla|lich|forge|lich-forge] [-Plich.gameJava=8] [-Plich.args="--skip-assets --dry-run"]
+// ./gradlew :devlaunch:runGame [-Plich.mc=1.8.9] [-Plich.profile=vanilla|lich|forge|lich-forge] [-Plich.gameJava=8] [-Plich.gameDir=<dir>] [-Plich.args="--skip-assets --dry-run"]
 // Every profile but vanilla installs the dev profiles into run/cache first (:installer:installDevProfile):
 // lich-<mc> (Lich, no Forge), forge-<mc> (plain Forge, for Java 8 baselines) and lich-forge-<mc>.
 // The game's JDK comes from Gradle's toolchain detection, or from -Plich.gameJavaHome=<jdk dir> for JDKs
@@ -41,6 +41,11 @@ tasks.register<JavaExec>("runGame") {
         }.get().executablePath.asFile.absolutePath
     val extraArgs = providers.gradleProperty("lich.args").orElse("")
     val runDir = rootProject.layout.projectDirectory.dir("run").asFile
+    // -Plich.gameDir: the game directory (mods, saves, logs) somewhere else, e.g. in the repository of a mod being
+    // tested, while downloads stay in run/cache. Its own property rather than --game-dir in lich.args, which is
+    // split on spaces. A relative path is relative to this checkout.
+    val gameDir = providers.gradleProperty("lich.gameDir").orNull
+        ?.let { rootProject.layout.projectDirectory.file(it).asFile.absolutePath }
 
     classpath = sourceSets.main.get().runtimeClasspath
     mainClass = application.mainClass
@@ -51,7 +56,8 @@ tasks.register<JavaExec>("runGame") {
             "--java", gameJava,
             "--run-dir", runDir.absolutePath,
             "--jvm-arg", "-Xmx2G",
-        ) + extraArgs.get().split(' ').filter { it.isNotBlank() }
+        ) + (if (gameDir != null) listOf("--game-dir", gameDir) else listOf()) +
+            extraArgs.get().split(' ').filter { it.isNotBlank() }
     })
     doFirst { runDir.mkdirs() }
 }

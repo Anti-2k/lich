@@ -11,3 +11,7 @@ build/
 *.iml
 *.ipr
 *.iws
+
+# Jars are build outputs or downloads, never sources; the Gradle wrapper's is the one exception.
+*.jar
+!gradle/wrapper/gradle-wrapper.jar

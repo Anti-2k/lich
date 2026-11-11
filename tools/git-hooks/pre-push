@@ -1,0 +1,32 @@
+#!/bin/sh
+# Refuses a push whose new commits add a jar, or whose ref names, tag messages, commit messages or added lines
+# contain forbidden text (forbidden.sh). "New" means not on any of the remote's tracking branches yet.
+. "$(dirname "$0")/forbidden.sh"
+remote="$1"
+status=0
+
+while read -r local_ref local_sha remote_ref remote_sha; do
+    case "$local_sha" in
+        *[!0]*) ;;
+        *) continue ;; # deleting a ref
+    esac
+
+    jars=$(git log --diff-filter=ACR --name-only --format= "$local_sha" --not --remotes="$remote" | sort -u | jar_hits)
+    if [ -n "$jars" ]; then
+        printf 'pre-push: %s adds jars:\n%s\n' "$local_ref" "$jars" >&2
+        status=1
+    fi
+
+    hits=$( {
+        printf '%s\n%s\n' "$local_ref" "$remote_ref"
+        if [ "$(git cat-file -t "$local_sha")" = tag ]; then git cat-file tag "$local_sha"; fi
+        git log --format='%an <%ae>%n%B' "$local_sha" --not --remotes="$remote"
+        git log -p --no-color --no-ext-diff --format= "$local_sha" --not --remotes="$remote" | grep '^+'
+    } | forbidden_hits)
+    if [ -n "$hits" ]; then
+        printf 'pre-push: %s contains forbidden text:\n%s\n' "$local_ref" "$hits" >&2
+        status=1
+    fi
+done
+
+exit $status

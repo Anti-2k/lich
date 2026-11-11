@@ -1,0 +1,21 @@
+#!/bin/sh
+# Refuses a commit that adds a jar, or whose staged paths or added lines contain forbidden text (forbidden.sh).
+. "$(dirname "$0")/forbidden.sh"
+status=0
+
+jars=$(git diff --cached --name-only --diff-filter=ACR | jar_hits)
+if [ -n "$jars" ]; then
+    printf 'pre-commit: jars are never committed:\n%s\n' "$jars" >&2
+    status=1
+fi
+
+hits=$( {
+    git diff --cached --name-only --diff-filter=ACR
+    git diff --cached -U0 --no-color --no-ext-diff | grep '^+' | grep -v '^+++ '
+} | forbidden_hits)
+if [ -n "$hits" ]; then
+    printf 'pre-commit: the staged changes contain forbidden text:\n%s\n' "$hits" >&2
+    status=1
+fi
+
+exit $status

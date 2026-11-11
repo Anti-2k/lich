@@ -2,3 +2,4 @@ gradlew* linguist-vendored
 gradle/wrapper/* linguist-vendored
 *.bat text eol=crlf
 gradlew text eol=lf
+tools/git-hooks/* text eol=lf

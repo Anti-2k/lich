@@ -1,0 +1,9 @@
+#!/bin/sh
+# Refuses a commit message that contains forbidden text (forbidden.sh).
+. "$(dirname "$0")/forbidden.sh"
+
+hits=$(grep -v '^#' "$1" | forbidden_hits)
+if [ -n "$hits" ]; then
+    printf 'commit-msg: the message contains forbidden text:\n%s\n' "$hits" >&2
+    exit 1
+fi

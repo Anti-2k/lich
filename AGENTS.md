@@ -52,6 +52,9 @@ README's support tables change (a new version, platform or loader), update them 
   the dot and Gradle reports an unknown task.
 - `-Plich.gameJavaHome` is needed for JDKs Gradle doesn't detect (unzipped ones have no registry entry).
   Without it, `-Plich.gameJava=<n>` (default 8) picks a detected toolchain.
+- `-Plich.gameDir=<dir>` puts the game directory (mods, saves, logs) elsewhere while downloads stay in `run/cache`,
+  for projects that keep their test games in their own repository (see Conventions). It's a property of its own because
+  `-Plich.args` is split on spaces.
 - Each profile has its own game directory, `run/<profile>-<mc>` (vanilla: `run/<mc>`). Boot logs
   `Lich <version> on Java …, <profile> profile` as its first line, then every compat-pass hit
   (`Compat: …`) and game fix (`Game fix: …`). The `forge-<mc>` JSONs come from
@@ -114,7 +117,7 @@ versions/shared/    compat-mc (project shared-compat-mc): game fixes identical i
                     (the sound and shutdown races: 1.8.9 and 1.12.2; branding: all three);
                     api: sources both per-version api projects compile (no project of its own)
 mods/               first-party Lich mods, not part of the runtime
-tools/              devlaunch, installer
+tools/              devlaunch, installer; git-hooks (local guard against jars and private names, see Conventions)
 test/               testmod, multimod, harness
 mcdev/              included build: remap-core and the dev.lich.mod Gradle plugin (Minecraft with MCP names
                     to compile against, refmaps, reobfuscation to SRG) for Lich mods and the api projects
@@ -211,9 +214,23 @@ get back the SHA-1 signatures current JDKs ignore (`LegacySignatures`).
   from the jars' `Implementation-Version`.
 - **Server safety** (DOCS.md §6): Lich core never touches movement/physics, the tick timer,
   attack/dig timing, packet timing/content, or `MathHelper`.
-- **Projects built on Lich stay out of this checkout.** When you develop a mod or client that lives in a repository
-  of its own, don't test it here: no jars of it in `run/<profile>/mods`, none of its saves, screenshots or logs in
-  `run/`, no branches or commits here made for it. If it needs something from Lich (devlaunch, the harness, the test
-  profiles, a Lich change it depends on), copy or clone Lich into that project's own directory and build and test
-  there. Nothing of such a project (jars, source, names) goes into this repository.
+- **Projects built on Lich stay out of this repository.** A mod or client that lives in a repository of its own builds
+  against this checkout through a composite build (its `-Plich.dir`) and keeps everything of its own on its side:
+  - Its test games run through this checkout's devlaunch with `-Plich.gameDir=<its repository>/run/<profile>-<mc>`
+    (from its own directory: `./gradlew :lich:devlaunch:runGame ...`), so its jars, worlds, screenshots and logs never
+    land in this checkout's `run/`.
+  - A Lich change it needs (a new hook, a fix) goes on a branch in a git worktree beside this checkout:
+    `git worktree add ../lich-<topic> -b <topic>`, with a topic that describes the change, not the project. The project
+    builds and tests against the worktree (`-Plich.dir=<worktree>`). To reuse the download cache instead of
+    downloading it again, link the worktree's `run/cache` to this checkout's (Windows:
+    `New-Item -ItemType Junction <worktree>/run/cache -Target <checkout>/run/cache`; elsewhere `ln -s`). devlaunch
+    reinstalls the Lich profile into the cache before every run, so don't run games from two checkouts at once. The
+    work stays uncommitted in the worktree until the user asks; `git worktree remove` once the branch is merged.
+  - Nothing of such a project (jars, source, names) goes into this repository, its branches, tags or messages: describe
+    the need generically and use `examplemod` / `dev.example` in examples. The local hooks in `tools/git-hooks` back
+    this up. Install them once per clone (worktrees share them) with
+    `cp tools/git-hooks/* "$(git rev-parse --git-common-dir)/hooks/"`, and list the words to refuse in
+    `.git/info/forbidden-patterns` (one case-insensitive regex per line; local, never versioned). They refuse a jar
+    other than the Gradle wrapper's, and any staged path, added line, commit or tag message or pushed ref that
+    matches. Never bypass them (`--no-verify`); if one fires, remove the text.
 - Don't commit unless asked.
