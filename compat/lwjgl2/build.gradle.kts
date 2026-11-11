@@ -6,7 +6,6 @@
 //   generated parts, renames.txt and ContextCapabilities.java, come from the generate* tasks below.
 plugins {
     id("lich.java")
-    id("lich.publish")
 }
 
 dependencies {

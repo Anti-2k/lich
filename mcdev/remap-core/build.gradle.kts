@@ -3,7 +3,6 @@
 // (core/remap), so it ships in Lich and only depends on ASM, which Lich ships too.
 plugins {
     id("lich.java")
-    id("lich.publish")
 }
 
 dependencies {

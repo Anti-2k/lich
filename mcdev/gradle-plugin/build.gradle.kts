@@ -3,7 +3,6 @@
 plugins {
     id("lich.java")
     `java-gradle-plugin`
-    id("lich.publish")
 }
 
 dependencies {

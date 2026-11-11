@@ -27,12 +27,6 @@ README's support tables change (a new version, platform or loader), update them 
   provides them at runtime, and Lich never ships them.
 - Gradle 9.8.2 with the configuration cache on. Inside task lambdas, use only locals of the task's
   configure block. Script-level vals capture the script object, and the cache rejects it.
-- `./gradlew publishMaven` publishes what mods build against to `build/maven` (`-Plich.mavenRepo=<dir>` elsewhere): the
-  modules with the `lich.publish` convention (`api`, the per-version `api`s, `loader`, `launchwrapper`,
-  `mixin-provider`, `transform`, `compat-lwjgl2`, and mcdev's `remap-core` and `dev.lich.mod` plugin). A module mods
-  need joins them through the convention (applied last) and the root `publishMaven` task. release.yml publishes each
-  release into the `maven` branch, never over a version already there, and docs.yml serves that branch on GitHub
-  Pages at https://anti-2k.github.io/lich/maven next to the guide.
 
 ## Running the game: devlaunch
 
@@ -221,8 +215,7 @@ get back the SHA-1 signatures current JDKs ignore (`LegacySignatures`).
 - **Server safety** (DOCS.md §6): Lich core never touches movement/physics, the tick timer,
   attack/dig timing, packet timing/content, or `MathHelper`.
 - **Projects built on Lich stay out of this repository.** A mod or client that lives in a repository of its own builds
-  against a Lich release from the Maven repository, or against this checkout (or a worktree of it) through a composite
-  build with its `-Plich.dir`, and keeps everything of its own on its side:
+  against this checkout through a composite build (its `-Plich.dir`) and keeps everything of its own on its side:
   - Its test games run through this checkout's devlaunch with `-Plich.gameDir=<its repository>/run/<profile>-<mc>`
     (from its own directory: `./gradlew :lich:devlaunch:runGame ...`), so its jars, worlds, screenshots and logs never
     land in this checkout's `run/`.

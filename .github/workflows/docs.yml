@@ -1,7 +1,6 @@
 # Builds the mod developer guide (docs/modding, mkdocs.yml) and publishes it to GitHub Pages on each push to main
-# that touches it, together with Lich's Maven repository (the maven branch, under /maven). release.yml runs it again
-# after publishing a release to that branch. Pull requests only build it, so a broken link fails the PR. Needs
-# Settings → Pages → Source: GitHub Actions.
+# that touches it. Pull requests only build it, so a broken link fails the PR. Needs Settings → Pages → Source:
+# GitHub Actions.
 name: docs
 
 on:
@@ -35,15 +34,6 @@ jobs:
 
       # strict (mkdocs.yml): broken links and anchors fail here.
       - run: mkdocs build
-
-      # Lich's Maven repository (https://anti-2k.github.io/lich/maven): the API and the dev.lich.mod plugin of each
-      # release, which release.yml publishes into the maven branch. After mkdocs build, which empties site/.
-      - name: Maven repository
-        run: |
-          if git fetch --depth=1 origin maven; then
-            mkdir -p site/maven
-            git archive FETCH_HEAD | tar -x -C site/maven
-          fi
 
       - uses: actions/upload-pages-artifact@v3
         if: github.event_name != 'pull_request'

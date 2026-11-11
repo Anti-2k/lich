@@ -1,6 +1,5 @@
 # Pushing a tag v<version> builds and tests that commit, then opens a DRAFT GitHub release with the installer
-# jar and its SHA-256, and publishes the API and the dev.lich.mod plugin to Lich's Maven repository on GitHub Pages
-# (https://anti-2k.github.io/lich/maven). Write the notes (Install / What's new) on the draft and publish it by hand.
+# jar and its SHA-256. Write the notes (Install / What's new) on the draft and publish it by hand.
 #
 #   1. bump version= in gradle.properties (and mcdev/gradle.properties), commit
 #   2. git tag v0.4.1 && git push origin main v0.4.1
@@ -16,8 +15,7 @@ on:
         required: true
 
 permissions:
-  contents: write # the draft release, the maven branch
-  actions: write # starting docs.yml, which deploys the Maven repository to GitHub Pages
+  contents: write
 
 jobs:
   release:
@@ -65,34 +63,6 @@ jobs:
       - name: Build and test
         shell: bash
         run: bash ./gradlew build --stacktrace
-
-      # Lich's Maven repository: the API, what it pulls in and the dev.lich.mod plugin (./gradlew publishMaven), for mods
-      # that build against a release. They go into the maven branch, never over a version already there, and docs.yml
-      # (run on main: the github-pages environment only deploys main) serves the branch at /maven next to the guide. Before
-      # the draft, so a rerun after a failure here gets past the draft's "already exists" check.
-      - name: Publish to the Maven repository
-        shell: bash
-        run: |
-          version='${{ steps.version.outputs.version }}'
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          # Byte for byte: the .pom and maven-metadata.xml files have checksums next to them.
-          git config core.autocrlf false
-          if git fetch --depth=1 origin maven; then
-            git worktree add --detach maven-repo FETCH_HEAD
-          else
-            git worktree add --orphan -b maven maven-repo
-          fi
-          if [ -d "maven-repo/dev/lich/api/$version" ]; then
-            echo "::warning::Lich $version is already in the Maven repository; left as it is"
-            exit 0
-          fi
-          # pwd -W: the Windows path, for Gradle.
-          bash ./gradlew publishMaven "-Plich.mavenRepo=$(cd maven-repo && pwd -W)" --stacktrace
-          git -C maven-repo add -A
-          git -C maven-repo commit -q -m "Lich $version"
-          git -C maven-repo push origin HEAD:refs/heads/maven
-          gh workflow run docs.yml --ref main
 
       - name: Draft release
         shell: bash

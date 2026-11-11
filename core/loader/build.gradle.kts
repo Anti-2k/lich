@@ -2,7 +2,6 @@
 // (DOCS.md §5.1). Runs in the system class loader; the API reaches it through a class loader exclusion.
 plugins {
     id("lich.java")
-    id("lich.publish")
 }
 
 dependencies {
