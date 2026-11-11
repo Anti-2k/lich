@@ -3,6 +3,7 @@ package org.lwjgl.opengl;
 import dev.lich.compat.lwjgl2.display.ContextHints;
 import dev.lich.compat.lwjgl2.display.GlContext;
 import dev.lich.compat.lwjgl2.display.Glfw;
+import dev.lich.compat.lwjgl2.display.WindowBackend;
 import org.lwjgl.LWJGLException;
 import org.lwjgl.PointerBuffer;
 import org.lwjgl.glfw.GLFW;
@@ -10,7 +11,7 @@ import org.lwjgl.glfw.GLFW;
 /**
  * LWJGL 2's second context sharing objects with another one, used to load textures off the render
  * thread (Forge's loading screen, Essential). It's a hidden 1x1 GLFW window whose context shares with the
- * given drawable's.
+ * given drawable's. Under a {@link WindowBackend} it has no window and no OpenGL: only which thread holds it.
  */
 public final class SharedDrawable implements Drawable {
     private GlContext context;
@@ -38,6 +39,9 @@ public final class SharedDrawable implements Drawable {
 
     /** A hidden window with a context like the display's, sharing with {@code shared} if given. */
     static GlContext hiddenWindow(int width, int height, PixelFormat format, GlContext shared) throws LWJGLException {
+        if (WindowBackend.current() != null) {
+            return GlContext.withoutGl(0L);
+        }
         Glfw.init();
         GLFW.glfwDefaultWindowHints();
         GLFW.glfwWindowHint(GLFW.GLFW_VISIBLE, GLFW.GLFW_FALSE);
@@ -95,22 +99,28 @@ public final class SharedDrawable implements Drawable {
 
     public void swapBuffers() throws LWJGLException {
         checkDestroyed();
-        GLFW.glfwSwapBuffers(context.window());
+        if (context.hasGl()) {
+            GLFW.glfwSwapBuffers(context.window());
+        }
     }
 
     public void setSwapInterval(int value) {
         checkDestroyed();
-        if (context.isCurrent()) {
+        if (context.hasGl() && context.isCurrent()) {
             GLFW.glfwSwapInterval(value);
         }
     }
 
     public void initContext(float r, float g, float b) {
-        GL11.glClearColor(r, g, b, 0f);
-        GL11.glClear(GL11.GL_COLOR_BUFFER_BIT);
+        if (context != null && context.hasGl()) {
+            GL11.glClearColor(r, g, b, 0f);
+            GL11.glClear(GL11.GL_COLOR_BUFFER_BIT);
+        }
     }
 
     public void checkGLError() {
-        Util.checkGLError();
+        if (context != null && context.hasGl()) {
+            Util.checkGLError();
+        }
     }
 }

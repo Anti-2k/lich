@@ -107,21 +107,27 @@ public final class Pbuffer implements Drawable {
     }
 
     public void swapBuffers() throws LWJGLException {
-        GLFW.glfwSwapBuffers(context().window());
+        if (context().hasGl()) {
+            GLFW.glfwSwapBuffers(context().window());
+        }
     }
 
     public void setSwapInterval(int value) {
-        if (context().isCurrent()) {
+        if (context().hasGl() && context().isCurrent()) {
             GLFW.glfwSwapInterval(value);
         }
     }
 
     public void initContext(float r, float g, float b) {
-        GL11.glClearColor(r, g, b, 0f);
-        GL11.glClear(GL11.GL_COLOR_BUFFER_BIT);
+        if (context().hasGl()) {
+            GL11.glClearColor(r, g, b, 0f);
+            GL11.glClear(GL11.GL_COLOR_BUFFER_BIT);
+        }
     }
 
     public void checkGLError() {
-        Util.checkGLError();
+        if (context().hasGl()) {
+            Util.checkGLError();
+        }
     }
 }

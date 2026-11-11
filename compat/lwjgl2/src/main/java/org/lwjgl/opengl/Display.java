@@ -6,6 +6,7 @@ import dev.lich.compat.lwjgl2.display.GlContext;
 import dev.lich.compat.lwjgl2.display.Glfw;
 import dev.lich.compat.lwjgl2.display.KeyboardInput;
 import dev.lich.compat.lwjgl2.display.MouseInput;
+import dev.lich.compat.lwjgl2.display.WindowBackend;
 import dev.lich.compat.lwjgl2.display.WindowState;
 import org.lwjgl.LWJGLException;
 import org.lwjgl.PointerBuffer;
@@ -34,6 +35,9 @@ import java.util.Set;
  * makes the process DPI-aware on Windows, so on a scaled desktop the window has real pixels where LWJGL 2's
  * was stretched by Windows. As LWJGL 2 did each time it made a window, a windowed mode reads the
  * {@code org.lwjgl.opengl.Window.undecorated} property: borderless-fullscreen mods set it, then a desktop-sized mode.
+ *
+ * <p>With a {@link WindowBackend} installed (a Lich mod that renders with another graphics API), the window gets
+ * no OpenGL context: the backend sets the window hints, swaps the buffers and takes the swap interval.
  */
 public final class Display {
     private static final Object LOCK = new Object();
@@ -55,6 +59,8 @@ public final class Display {
     private static PixelFormat createdFormat;
     private static ContextAttribs createdAttribs;
     private static volatile GlContext context;
+    /** The backend this window was created for, or {@code null}: an OpenGL window. */
+    private static volatile WindowBackend backend;
     private static volatile long window;
     private static volatile boolean focused;
     private static volatile boolean iconified;
@@ -216,10 +222,27 @@ public final class Display {
                 GLFW.glfwSetWindowPos(window, position[0], position[1]);
             }
         }
-        if (context != null && context.isCurrent()) {
+        applySwapInterval();
+        readSizes();
+    }
+
+    /** The swap interval belongs to the current OpenGL context, or to the backend. */
+    private static void applySwapInterval() {
+        WindowBackend renderer = backend;
+        if (renderer != null) {
+            renderer.setSwapInterval(swapInterval);
+        } else if (context != null && context.isCurrent()) {
             GLFW.glfwSwapInterval(swapInterval);
         }
-        readSizes();
+    }
+
+    private static void swap() {
+        WindowBackend renderer = backend;
+        if (renderer != null) {
+            renderer.swapBuffers(window);
+        } else {
+            GLFW.glfwSwapBuffers(window);
+        }
     }
 
     /** LWJGL 2 read the property whenever it created a window, which every windowed mode change did. */
@@ -349,7 +372,7 @@ public final class Display {
         if (window == 0) {
             throw new IllegalStateException("Display not created");
         }
-        GLFW.glfwSwapBuffers(window);
+        swap();
     }
 
     public static void update() {
@@ -362,7 +385,7 @@ public final class Display {
                 throw new IllegalStateException("Display not created");
             }
             if (!iconified) {
-                GLFW.glfwSwapBuffers(window);
+                swap();
             }
             if (processMessages) {
                 processMessages();
@@ -447,7 +470,12 @@ public final class Display {
             GLFW.glfwWindowHint(GLFW.GLFW_RESIZABLE, resizable ? GLFW.GLFW_TRUE : GLFW.GLFW_FALSE);
             GLFW.glfwWindowHint(GLFW.GLFW_DECORATED, decorated());
             ContextHints.apply(pixelFormat, attribs);
-            long share = sharedDrawable instanceof SharedDrawable shared ? shared.context().window()
+            WindowBackend renderer = WindowBackend.current();
+            if (renderer != null) {
+                renderer.windowHints();
+            }
+            long share = renderer != null ? 0L
+                    : sharedDrawable instanceof SharedDrawable shared ? shared.context().window()
                     : sharedDrawable instanceof Pbuffer pbuffer ? pbuffer.context().window() : 0L;
             long handle = GLFW.glfwCreateWindow(current.getWidth(), current.getHeight(), title, full ? monitor() : 0L, share);
             if (handle == 0) {
@@ -455,7 +483,8 @@ public final class Display {
             }
             window = handle;
             Glfw.setEventThread(Thread.currentThread());
-            context = new GlContext(handle);
+            backend = renderer;
+            context = renderer != null ? GlContext.withoutGl(handle) : new GlContext(handle);
             createdFormat = pixelFormat;
             createdAttribs = attribs;
             installCallbacks(handle);
@@ -467,10 +496,15 @@ public final class Display {
                 applyIcons();
             }
             context.makeCurrent();
-            GLFW.glfwSwapInterval(swapInterval);
-            GL11.glClearColor(red, green, blue, 0f);
-            GL11.glClear(GL11.GL_COLOR_BUFFER_BIT);
-            GLFW.glfwSwapBuffers(handle);
+            if (renderer != null) {
+                renderer.windowCreated(handle);
+                renderer.setSwapInterval(swapInterval);
+            } else {
+                GLFW.glfwSwapInterval(swapInterval);
+                GL11.glClearColor(red, green, blue, 0f);
+                GL11.glClear(GL11.GL_COLOR_BUFFER_BIT);
+                GLFW.glfwSwapBuffers(handle);
+            }
             GLFW.glfwShowWindow(handle);
             focused = GLFW.glfwGetWindowAttrib(handle, GLFW.GLFW_FOCUSED) == GLFW.GLFW_TRUE;
             iconified = false;
@@ -549,6 +583,11 @@ public final class Display {
             if (current == null) {
                 return;
             }
+            WindowBackend renderer = backend;
+            if (renderer != null) {
+                renderer.windowDestroyed(window);
+            }
+            backend = null;
             context = null;
             window = 0;
             WindowState.clear();
@@ -565,9 +604,7 @@ public final class Display {
     public static void setSwapInterval(int value) {
         synchronized (LOCK) {
             swapInterval = value;
-            if (context != null && context.isCurrent()) {
-                GLFW.glfwSwapInterval(value);
-            }
+            applySwapInterval();
         }
     }
 

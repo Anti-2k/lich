@@ -414,6 +414,12 @@ Never redistribute Minecraft or patched Forge binaries. Patch at load time, or o
   - **`org.lwjgl.MemoryUtil`** (LWJGL 2's buffer addresses and string encoding; found 2026-10-31, GT New Horizons):
     Angelica's Sodium writes vertex data through `getAddress`, and without the class the game crashed on joining a
     world. Lich's copy has LWJGL 2's whole public API, on LWJGL 3's `org.lwjgl.system.MemoryUtil`.
+  - **`WindowBackend`** (`dev.lich.compat.lwjgl2.display`, added 2026-11-11): a Lich mod that draws the game with
+    another graphics API installs one from `preLaunch`. `Display` then creates the
+    window with the backend's GLFW hints and no OpenGL context and hands it every buffer swap and the swap interval;
+    `GlContext`, `SharedDrawable` and `Pbuffer` only track which thread holds them, and `GLContext.getCapabilities()`
+    reports the extensions the backend names. Redirecting the game's OpenGL calls is the mod's job (LWJGL 3 aborts
+    on a GL call without a context). Nothing changes when no backend is installed.
   - **Tested (Windows x64):** vanilla 1.8.9 to the main menu; Forge 1.7.10 and 1.8.9 through the
     loading screen into a local server; typing in chat (shift, punctuation, backspace), turning the
     camera, clicking menus, F11 fullscreen and back; the mod corpus (§7). **(verify)** Linux X11/Wayland,
