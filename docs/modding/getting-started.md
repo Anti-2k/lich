@@ -7,7 +7,7 @@ jar and running in the game.
 
 - **JDK 25** (Temurin 25 is what Lich is tested with). It builds your mod and runs Gradle. Gradle in this project
   does not download JDKs; install it yourself.
-- **A checkout of the Lich repository**, see below.
+- **A checkout of the Lich repository**, or from Lich 0.5.0 its Maven repository, see below.
 - Internet on the first build. The `dev.lich.mod` plugin downloads the Minecraft client, its libraries and MCP's
   names once and keeps them in `<Gradle user home>/caches/lich-mcdev`, shared by every build on the machine.
 - To play-test: either `tools/devlaunch` from the same checkout, or a [Prism](https://prismlauncher.org/) instance
@@ -15,13 +15,17 @@ jar and running in the game.
 
 ### Where your mod lives
 
-Lich does not publish its API or the Gradle plugin to a Maven repository yet (only the installer is released). Until
-it does, **a mod is a module inside a checkout of the Lich repository**, built with the repository's Gradle build.
-The mods in `test/` and `mods/` are laid out exactly that way, and a module there is what the rest of this page
-assumes. Your finished jar is a plain file you can hand to anyone; only building it needs the checkout.
+This page builds the mod as **a module inside a checkout of the Lich repository**, with the repository's Gradle
+build. The mods in `test/` and `mods/` are laid out exactly that way. Your finished jar is a plain file you can hand to
+anyone; only building it needs the checkout.
 
-> Publishing the API and the plugin so a mod can live in its own repository is on the roadmap
-> ([DOCS.md §8](https://github.com/Anti-2k/lich/blob/main/DOCS.md#8-roadmap)), as is a project template.
+From Lich 0.5.0, a mod can also live in a repository of its own: each release publishes the API and the `dev.lich.mod`
+plugin to Lich's Maven repository, `https://anti-2k.github.io/lich/maven`. Add it to `pluginManagement` and to the
+dependency repositories (next to Maven Central and `https://maven.fabricmc.net` for Mixin), apply
+`id("dev.lich.mod") version "0.5.0"`, and depend on `compileOnly("dev.lich:v1_8_9-api:0.5.0")` instead of the project.
+The `lich.java` convention used below belongs to the Lich build: set the Java 25 toolchain and `options.release = 25`
+yourself. A project template is on the roadmap
+([DOCS.md §8](https://github.com/Anti-2k/lich/blob/main/DOCS.md#8-roadmap)).
 
 ## 1. Create the module
 

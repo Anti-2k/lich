@@ -2,6 +2,7 @@
 // every class Lich defines (DOCS.md §4.3). The redirect table itself lives with the shims it points at.
 plugins {
     id("lich.java")
+    id("lich.publish")
 }
 
 dependencies {

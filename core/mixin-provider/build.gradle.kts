@@ -2,6 +2,7 @@
 // mods are installed: without them the game keeps whatever Mixin Forge mods ship (DOCS.md §2.4, §5.2).
 plugins {
     id("lich.java")
+    id("lich.publish")
 }
 
 dependencies {

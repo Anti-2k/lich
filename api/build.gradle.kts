@@ -4,6 +4,7 @@
 // LaunchClassLoader, next to the game and the mods.
 plugins {
     id("lich.java")
+    id("lich.publish")
 }
 
 dependencies {

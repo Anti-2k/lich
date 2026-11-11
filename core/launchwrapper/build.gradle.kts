@@ -2,6 +2,7 @@
 // dev.lich.launchwrapper entry point that boot uses. DOCS.md §4.2.
 plugins {
     id("lich.java")
+    id("lich.publish")
 }
 
 // Classes the tests load through LaunchClassLoader. Deliberately not on the test classpath, so the

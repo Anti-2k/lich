@@ -4,6 +4,7 @@
 plugins {
     id("lich.java")
     id("dev.lich.mod")
+    id("lich.publish")
 }
 
 lich {
