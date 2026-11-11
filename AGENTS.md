@@ -211,4 +211,9 @@ get back the SHA-1 signatures current JDKs ignore (`LegacySignatures`).
   from the jars' `Implementation-Version`.
 - **Server safety** (DOCS.md §6): Lich core never touches movement/physics, the tick timer,
   attack/dig timing, packet timing/content, or `MathHelper`.
+- **Projects built on Lich stay out of this checkout.** When you develop a mod or client that lives in a repository
+  of its own, don't test it here: no jars of it in `run/<profile>/mods`, none of its saves, screenshots or logs in
+  `run/`, no branches or commits here made for it. If it needs something from Lich (devlaunch, the harness, the test
+  profiles, a Lich change it depends on), copy or clone Lich into that project's own directory and build and test
+  there. Nothing of such a project (jars, source, names) goes into this repository.
 - Don't commit unless asked.
