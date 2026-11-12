@@ -11,6 +11,10 @@ plugins {
 
 dependencies {
     implementation(project(":transform"))
+    // LaunchClassLoader, which frame computation reads class bytes from (LaunchClassHierarchy); both are on Lich's
+    // class path at runtime.
+    compileOnly(project(":launchwrapper"))
+    testImplementation(project(":launchwrapper"))
     compileOnly(libs.asm)
     compileOnly(libs.asm.commons)
     compileOnly(libs.asm.tree)

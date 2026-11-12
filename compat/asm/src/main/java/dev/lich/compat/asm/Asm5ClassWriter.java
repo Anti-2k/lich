@@ -1,5 +1,6 @@
 package dev.lich.compat.asm;
 
+import net.minecraft.launchwrapper.LaunchClassLoader;
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.MethodVisitor;
@@ -26,6 +27,8 @@ public class Asm5ClassWriter extends ClassWriter {
 
     private final ClassReader source;
     private boolean throughContext;
+    private LaunchClassHierarchy hierarchy;
+    private LaunchClassLoader hierarchyLoader;
 
     public Asm5ClassWriter(int flags) {
         super(flags);
@@ -40,16 +43,23 @@ public class Asm5ClassWriter extends ClassWriter {
     /**
      * A class ASM's own class loader can't see is looked up through the context class loader (LaunchClassLoader while
      * the game runs) before giving up. Essential's relaunch gives ASM a class loader of its own, where a coremod computing
-     * frames (TenshiCore) doesn't find the game's classes.
+     * frames (TenshiCore) doesn't find the game's classes. Through LaunchClassLoader the hierarchy is read from class
+     * bytes ({@link LaunchClassHierarchy}): loading a class here can re-enter Mixin's transformer.
      */
     @Override
     protected String getCommonSuperClass(String type1, String type2) {
+        if (getClassLoader() instanceof LaunchClassLoader launchClassLoader) {
+            return hierarchy(launchClassLoader).commonSuperClass(type1, type2);
+        }
         try {
             return super.getCommonSuperClass(type1, type2);
         } catch (TypeNotPresentException notThere) {
             ClassLoader context = Thread.currentThread().getContextClassLoader();
             if (context == null || context == getClassLoader()) {
                 throw notThere;
+            }
+            if (context instanceof LaunchClassLoader launchClassLoader) {
+                return hierarchy(launchClassLoader).commonSuperClass(type1, type2);
             }
             throughContext = true;
             try {
@@ -58,6 +68,15 @@ public class Asm5ClassWriter extends ClassWriter {
                 throughContext = false;
             }
         }
+    }
+
+    /** LaunchClassLoader's classes as bytes, without loading them (see {@link LaunchClassHierarchy}); one per writer. */
+    private LaunchClassHierarchy hierarchy(LaunchClassLoader loader) {
+        if (hierarchy == null || hierarchyLoader != loader) {
+            hierarchy = new LaunchClassHierarchy(loader);
+            hierarchyLoader = loader;
+        }
+        return hierarchy;
     }
 
     @Override

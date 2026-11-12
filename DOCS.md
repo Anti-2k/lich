@@ -115,6 +115,15 @@ Never redistribute Minecraft or patched Forge binaries. Patch at load time, or o
     in the system class loader, so in the 1.7.10 profile `new ClassWriter(...)` becomes
     `LaunchClassLoaderClassWriter`, which resolves through the context class loader. 1.8.9's FML kept ASM
     in the system class loader on Java 8 too, so nothing changes there.
+  - **(2026-11-12)** Resolving through LaunchClassLoader with `Class.forName` defines the class and runs every
+    transformer on it. When Mixin prepares a mixin that targets a game class (`Minecraft`, for Lich's hooks or a Lich
+    mod), it reads that class through the transformer chain while holding its re-entrance lock; a coremod that
+    rewrites the class with `COMPUTE_FRAMES` (ResourceLoader, BetterLoadingScreen) then made Mixin's transformer run
+    inside itself. Mixin threw `ReEntrantTransformerError`, LaunchClassLoader kept the supertype as invalid, and the
+    game's own load of `Minecraft` failed. Java 8 packs never hit it because nothing there loads `Minecraft` that early.
+    Through LaunchClassLoader, `Asm5ClassWriter.getCommonSuperClass` now reads the hierarchy from class bytes
+    (`LaunchClassHierarchy`): a loaded class from its `Class`, any other from `getClassBytes` through the rename
+    transformer only, the JDK's through `Class.forName` as before. Nothing is defined, so no transformer runs.
   - **(Phase 4)** ASM 6+ throws `IllegalStateException` when a *subclass* calls the API-less constructor
     of `BasicInterpreter`, `BasicVerifier`, `SimpleVerifier`, `SourceInterpreter`, `CheckMethodAdapter`
     or `TryCatchBlockSorter`; ASM 5 allowed it (`ClassNode`, `MethodNode` etc. already threw in ASM 5,
