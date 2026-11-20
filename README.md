@@ -127,7 +127,7 @@ The full design, every Java 25 breakage and its fix, the Lich mod format and the
 
 ## Project status
 
-Current release: **0.4.0**, which adds Minecraft 1.12.2 (first release: 0.3.0). Running Forge and its mods on Java 25
+Current release: **0.4.1**, which adds WindowBackend, for mods that draw the game with another graphics API (first release: 0.3.0; 1.12.2 since 0.4.0). Running Forge and its mods on Java 25
 works and is tested with modpacks on all three versions; Lich mods v0 work, one jar can target 1.7.10, 1.8.9 and 1.12.2, and there's a Prism installer. Mod developer docs are in [docs/modding](docs/modding/README.md). Still to come: Linux and macOS testing, other
 launchers, and publishing the API and Gradle plugin so a mod can live outside this repository. See the
 [roadmap](DOCS.md#8-roadmap).
